@@ -76,6 +76,7 @@ cargo run --release -p feather-app -- some.pdf
 | `]` `[` | next / previous tab |
 | click a tab | switch to it |
 | `Ctrl+Alt+F` (anywhere) | summon the window |
+| `n` | open this document in a window of its own |
 | drag over text | select it (EPUB today) |
 | `c` | copy the selection |
 | `p` | pin or unpin the current tab |
@@ -156,6 +157,17 @@ dependency in this estate, and awkward beside a licence whose point is a
 retained attribution. hayro is Apache/MIT, pure Rust, read-only by design, and
 cross-compiles to Windows ARM64 without a second machine. The cost is that EPUB
 reflow is ours to write. §12 of the plan argues this properly.
+
+## Multiple windows
+
+`n` opens the current document in a window of its own, and
+`feather-viewer --new-window file.pdf` does the same from a shell. That is a
+second *process*, not a second window in the running one — the window state
+(surface, viewport, selection, cursor) is owned by the application rather than
+by a window, so an in-process second window is a refactor of all of it rather
+than a flag. The trade is explicit: a separate window pays for its own cache and
+render thread, and its global shortcut registration fails because the first
+process already holds the key.
 
 ## Summoning
 

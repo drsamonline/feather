@@ -593,6 +593,33 @@ impl App {
             .map(|index| (page, index))
     }
 
+    /// Open the current document in a window of its own.
+    ///
+    /// A second *process*, not a second window in this one: the window state —
+    /// surface, viewport, selection, cursor — is currently owned by the
+    /// application rather than by a window, so an in-process second window is a
+    /// refactor of everything above rather than a flag. A separate process gets
+    /// the behaviour today at the cost of its own cache and render thread, and
+    /// the honest thing is to say so rather than to pretend.
+    fn new_window(&mut self) {
+        let Some(tab) = self.session.active_tab() else {
+            return;
+        };
+        let path = tab.path.clone();
+        let Ok(exe) = std::env::current_exe() else {
+            eprintln!("feather: cannot find my own executable");
+            return;
+        };
+        match std::process::Command::new(exe)
+            .arg("--new-window")
+            .arg(&path)
+            .spawn()
+        {
+            Ok(_) => eprintln!("feather: opened {} in a new window", path.display()),
+            Err(e) => eprintln!("feather: could not open a window: {e}"),
+        }
+    }
+
     fn copy_selection(&mut self) {
         let Some(selection) = self.selection else {
             return;
@@ -1288,6 +1315,7 @@ impl ApplicationHandler<UserEvent> for App {
                         "[" => self.switch(-1),
                         "w" => self.close_active(),
                         "c" => self.copy_selection(),
+                        "n" => self.new_window(),
                         "p" => {
                             self.session.toggle_pinned_active();
                             self.invalidate();
@@ -1314,11 +1342,32 @@ impl ApplicationHandler<UserEvent> for App {
 }
 
 fn main() {
-    let arg = std::env::args().nth(1);
+    let mut path: Option<String> = None;
+    let mut new_window = false;
 
-    // A second launch hands its path to the first and leaves.
-    if let Some(path) = &arg {
-        if hand_off(path) {
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--new-window" => new_window = true,
+            "-h" | "--help" => {
+                println!("feather-viewer [--new-window] [document]");
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("feather: unknown option {other}");
+                std::process::exit(2);
+            }
+            other => {
+                if path.is_none() {
+                    path = Some(other.to_string());
+                }
+            }
+        }
+    }
+
+    // A second launch hands its path to the first and leaves — unless it was
+    // asked for a window of its own.
+    if let Some(target) = &path {
+        if !new_window && hand_off(target) {
             return;
         }
     }
@@ -1336,9 +1385,12 @@ fn main() {
     start_listener(event_loop.create_proxy());
 
     let mut app = App::new(renderer);
-    if let Some(path) = arg {
+    if let Some(path) = path {
         app.open_path(PathBuf::from(path));
-        eprintln!("feather: ready in {:.1} ms", started.elapsed().as_secs_f64() * 1000.0);
+        eprintln!(
+            "feather: ready in {:.1} ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
     }
 
     if let Err(e) = event_loop.run_app(&mut app) {
