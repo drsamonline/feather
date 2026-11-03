@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feather — Read-Only Document Viewer · Build Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono','SF Mono',Consolas,monospace;
+
+    --bg:#f4f5f1;
+    --grid:rgba(20,40,55,0.045);
+    --surface:#ffffff;
+    --surface2:#eceee8;
+    --surface3:#e3e6df;
+    --border:rgba(20,40,55,0.10);
+    --border-bright:rgba(20,40,55,0.20);
+    --text:#132029;
+    --text-dim:#5c6b74;
+    --ink:#1b4a5e;
+    --ink-dim:rgba(27,74,94,0.07);
+    --brass:#9a6d1f;
+    --brass-dim:rgba(154,109,31,0.10);
+    --green:#2c7350;
+    --green-dim:rgba(44,115,80,0.09);
+    --amber:#a8641a;
+    --amber-dim:rgba(168,100,26,0.10);
+    --red:#9c3a2b;
+    --red-dim:rgba(156,58,43,0.09);
+    --shadow:0 1px 2px rgba(19,32,41,.05),0 6px 18px rgba(19,32,41,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0c1418;
+      --grid:rgba(180,210,225,0.045);
+      --surface:#121d23;
+      --surface2:#18262e;
+      --surface3:#1e2f39;
+      --border:rgba(200,225,235,0.09);
+      --border-bright:rgba(200,225,235,0.20);
+      --text:#dde7eb;
+      --text-dim:#8fa3ad;
+      --ink:#6fb6cd;
+      --ink-dim:rgba(111,182,205,0.10);
+      --brass:#d6a75a;
+      --brass-dim:rgba(214,167,90,0.12);
+      --green:#5fbd8b;
+      --green-dim:rgba(95,189,139,0.12);
+      --amber:#dfa24e;
+      --amber-dim:rgba(223,162,78,0.12);
+      --red:#e08070;
+      --red-dim:rgba(224,128,112,0.12);
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background-color:var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:28px 28px,28px 28px;
+    color:var(--text);
+    font-family:var(--font-body);
+    font-size:15px;
+    line-height:1.6;
+    padding:44px 28px 90px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1060px;margin:0 auto}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .a{animation:fadeUp .4s ease-out both;animation-delay:calc(var(--i,0)*.05s)}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+  /* ---------- header ---------- */
+  .eyebrow{
+    font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--brass);display:flex;align-items:center;gap:10px;margin-bottom:14px;
+  }
+  .eyebrow::after{content:'';flex:1;height:1px;background:var(--border-bright)}
+  h1{font-size:clamp(30px,4.4vw,46px);font-weight:300;letter-spacing:-1.2px;line-height:1.08}
+  h1 b{font-weight:600;color:var(--ink)}
+  .lede{max-width:66ch;color:var(--text-dim);font-size:15.5px;margin-top:16px}
+  .lede strong{color:var(--text);font-weight:500}
+
+  /* ---------- kpi ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:30px 0 8px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 16px 14px;box-shadow:var(--shadow);min-width:0}
+  .kpi .v{font-family:var(--font-mono);font-size:26px;font-weight:500;letter-spacing:-1px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .kpi .v small{font-size:13px;font-weight:400;color:var(--text-dim);letter-spacing:0}
+  .kpi .l{font-family:var(--font-mono);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--text-dim);margin-top:8px}
+  .v.ink{color:var(--ink)}.v.brass{color:var(--brass)}.v.green{color:var(--green)}
+
+  /* ---------- contents nav ---------- */
+  .toc{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 0}
+  .toc a{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-decoration:none;
+    color:var(--text-dim);border:1px solid var(--border);background:var(--surface);
+    padding:4px 9px;border-radius:5px;transition:color .15s,border-color .15s;
+  }
+  .toc a:hover{color:var(--ink);border-color:var(--border-bright)}
+  .toc a b{color:var(--brass);font-weight:600;margin-right:5px}
+
+  /* ---------- sections ---------- */
+  section{margin-top:56px}
+  .snum{
+    font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.2em;
+    color:var(--text-dim);display:flex;align-items:center;gap:12px;margin-bottom:10px;
+  }
+  .snum i{width:7px;height:7px;border-radius:50%;background:var(--brass);display:block;font-style:normal}
+  h2{font-size:24px;font-weight:500;letter-spacing:-.5px;margin-bottom:10px}
+  h3{font-size:15px;font-weight:600;letter-spacing:-.1px;margin-bottom:8px}
+  p{max-width:74ch}
+  p+p{margin-top:10px}
+  .muted{color:var(--text-dim)}
+  code{font-family:var(--font-mono);font-size:.85em;background:var(--ink-dim);color:var(--ink);padding:1px 5px;border-radius:3px}
+  a{color:var(--ink)}
+
+  /* ---------- callout ---------- */
+  .callout{
+    border:1px solid var(--border-bright);border-left:3px solid var(--brass);
+    background:linear-gradient(90deg,var(--brass-dim),transparent 70%);
+    border-radius:8px;padding:18px 22px;margin-top:22px;
+  }
+  .callout .tag{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:6px}
+  .callout p{max-width:none}
+
+  /* ---------- tables ---------- */
+  .tbox{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:18px;box-shadow:var(--shadow)}
+  .tscroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5}
+  thead th{
+    background:var(--surface2);font-family:var(--font-mono);font-size:9.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.14em;color:var(--text-dim);
+    text-align:left;padding:11px 14px;border-bottom:1px solid var(--border-bright);white-space:nowrap;
+  }
+  td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:nth-child(even){background:var(--ink-dim)}
+  tbody tr:hover{background:var(--surface3)}
+  td.w{min-width:200px;max-width:400px}
+  td.nw{white-space:nowrap}
+  td small{display:block;color:var(--text-dim);font-size:11.5px;margin-top:3px}
+  .num{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:9.5px;
+    font-weight:600;padding:3px 9px;border-radius:5px;white-space:nowrap;letter-spacing:.04em;
+  }
+  .pill::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+  .p-yes{background:var(--green-dim);color:var(--green)}
+  .p-mid{background:var(--amber-dim);color:var(--amber)}
+  .p-no{background:var(--red-dim);color:var(--red)}
+  .p-info{background:var(--ink-dim);color:var(--ink)}
+  .p-gold{background:var(--brass-dim);color:var(--brass)}
+
+  /* ---------- architecture flow ---------- */
+  .flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:26px;margin-top:22px}
+  .flow .step{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px 14px 15px;min-width:0;box-shadow:var(--shadow)}
+  .flow .step:not(:last-child)::after{
+    content:'';position:absolute;right:-19px;top:50%;width:12px;height:1px;background:var(--border-bright);
+  }
+  .flow .step:not(:last-child)::before{
+    content:'';position:absolute;right:-21px;top:calc(50% - 3px);width:5px;height:5px;
+    border-top:1px solid var(--border-bright);border-right:1px solid var(--border-bright);transform:rotate(45deg);
+  }
+  .flow .k{font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);margin-bottom:7px}
+  .flow .t{font-size:13px;font-weight:600;margin-bottom:5px}
+  .flow .d{font-size:11.5px;color:var(--text-dim);line-height:1.45}
+  .flow .m{font-family:var(--font-mono);font-size:10px;color:var(--ink);margin-top:8px;word-break:break-word}
+
+  .layers{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px 18px;min-width:0;box-shadow:var(--shadow)}
+  .card h3{display:flex;align-items:baseline;gap:8px}
+  .card h3 span{font-family:var(--font-mono);font-size:9.5px;font-weight:600;color:var(--brass);letter-spacing:.12em}
+  .card ul{list-style:none;margin-top:8px}
+  .card li{position:relative;padding-left:14px;font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:4px}
+  .card li::before{content:'';position:absolute;left:0;top:.62em;width:4px;height:4px;background:var(--brass);border-radius:1px}
+  .card li b{color:var(--text);font-weight:500}
+
+  /* ---------- roadmap ---------- */
+  .road{margin-top:24px;position:relative;padding-left:26px}
+  .road::before{content:'';position:absolute;left:6px;top:6px;bottom:8px;width:1px;background:var(--border-bright)}
+  .mile{position:relative;padding-bottom:22px}
+  .mile::before{
+    content:'';position:absolute;left:-24px;top:5px;width:9px;height:9px;border-radius:50%;
+    background:var(--surface);border:2px solid var(--brass);
+  }
+  .mile.now::before{background:var(--brass)}
+  .mile .h{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+  .mile .h b{font-size:14px;font-weight:600}
+  .mile .h em{font-family:var(--font-mono);font-size:10px;font-style:normal;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase}
+  .mile .h u{font-family:var(--font-mono);font-size:10px;text-decoration:none;color:var(--brass);border:1px solid var(--brass-dim);background:var(--brass-dim);padding:1px 7px;border-radius:4px}
+  .mile p{font-size:13px;color:var(--text-dim);margin-top:3px;max-width:70ch}
+
+  /* ---------- verdict strip ---------- */
+  .verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:20px}
+  .vcard{background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--green);border-radius:8px;padding:14px 16px;min-width:0}
+  .vcard.mid{border-top-color:var(--amber)}
+  .vcard.no{border-top-color:var(--red)}
+  .vcard .h{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px}
+  .vcard li{list-style:none;font-size:12.5px;color:var(--text);line-height:1.5;margin-bottom:3px;padding-left:12px;position:relative}
+  .vcard li::before{content:'';position:absolute;left:0;top:.6em;width:4px;height:4px;border-radius:1px;background:var(--border-bright)}
+
+  footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim);letter-spacing:.06em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  @media (max-width:860px){
+    body{padding:28px 16px 60px}
+    .flow{grid-template-columns:1fr;gap:20px}
+    .flow .step:not(:last-child)::after{right:auto;left:50%;top:auto;bottom:-13px;width:1px;height:9px}
+    .flow .step:not(:last-child)::before{right:auto;left:calc(50% - 3px);top:auto;bottom:-16px;transform:rotate(135deg)}
+    .layers{grid-template-columns:1fr}
+    h2{font-size:20px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow a" style="--i:0">Build plan · v0.6 · 03 Nov 2026</div>
+  <h1 class="a" style="--i:1">A <b>read-only</b> document viewer<br>that opens before you blink</h1>
+  <p class="lede a" style="--i:2">
+    One window, one document, nothing else. No editing, no annotation, no cloud, no plugins.
+    <strong>Under 20 MB, cold start under 300 ms, 1000-page PDFs that scroll at refresh rate</strong>,
+    shell integration on all three desktops, tray icon optional, tabs that can be pinned.
+    This is the feasibility read, the engine decision that drives everything, the full ecosystem sweep,
+    the crate-by-crate shopping list, and what your own repositories already supply.
+  </p>
+
+  <div class="kpis">
+    <div class="kpi a" style="--i:3"><div class="v green">7.9<small> MB</small></div><div class="l">Reference: SumatraPDF portable</div></div>
+    <div class="kpi a" style="--i:4"><div class="v ink">&lt;300<small> ms</small></div><div class="l">Cold start budget</div></div>
+    <div class="kpi a" style="--i:5"><div class="v brass">1</div><div class="l">Engine trait, swappable</div></div>
+    <div class="kpi a" style="--i:6"><div class="v">7</div><div class="l">Format families in v1.0</div></div>
+    <div class="kpi a" style="--i:7"><div class="v green">3</div><div class="l">Desktops, one binary each</div></div>
+  </div>
+
+  <nav class="toc a" style="--i:8">
+    <a href="#s1"><b>01</b>The engine</a>
+    <a href="#s2"><b>02</b>Requirements</a>
+    <a href="#s3"><b>03</b>Formats</a>
+    <a href="#s4"><b>04</b>Office &amp; ODF</a>
+    <a href="#s5"><b>05</b>Stack options</a>
+    <a href="#s6"><b>06</b>Architecture</a>
+    <a href="#s7"><b>07</b>OS integration</a>
+    <a href="#s8"><b>08</b>Budget</a>
+    <a href="#s9"><b>09</b>Ecosystem map</a>
+    <a href="#s10"><b>10</b>Crate picklist</a>
+    <a href="#s11"><b>11</b>What v2 missed</a>
+    <a href="#s12"><b>12</b>Your repos</a>
+    <a href="#s13"><b>13</b>Roadmap</a>
+    <a href="#s14"><b>14</b>Verdict</a>
+    <a href="#s15"><b>15</b>Audit log</a>
+    <a href="#s16"><b>16</b>Your links</a>
+  </nav>
+
+  <!-- ============ 1. THE DECISION ============ -->
+  <section id="s1">
+    <div class="snum"><i></i>01 — the fork in the road</div>
+    <h2>Everything hinges on the rendering engine — and its licence</h2>
+    <p>“Lightweight, cross-platform, many formats, superfast” is not four features; it is one
+      decision made four times. If you embed a browser engine you lose small and fast. If you write
+      your own PDF parser you lose two years. The realistic answer is a native UI shell wrapped around
+      one battle-tested C rendering library, and the entire shape of the product follows from which
+      library you pick.</p>
+
+    <div class="callout">
+      <div class="tag">The choice</div>
+      <p><strong>MuPDF</strong> gives you PDF, EPUB, MOBI, FB2, CBZ, XPS, SVG, HTML, TXT and raster images
+        from a single dependency, at ~4–6 MB compiled in, and it is the fastest of the mainstream
+        engines — but it is <strong>AGPL-3.0</strong>. <strong>PDFium</strong> (Chrome's engine, BSD-3)
+        is battle-tested on dirty real-world files but does <em>only</em> PDF.
+        <strong>hayro</strong> is the new third answer: a pure-Rust, Apache/MIT PDF rasteriser with no C
+        toolchain at all. Pick your licence posture first, then the engine is decided for you.</p>
+    </div>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th>Engine</th><th>Licence</th><th>Formats</th><th class="num">Footprint</th><th class="w">Reality check</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>MuPDF</b><br><small>via <code>mupdf</code> / <code>mupdf-rs</code></small></td>
+            <td><span class="pill p-no">AGPL-3.0</span></td>
+            <td>PDF, EPUB, MOBI, FB2, CBZ, XPS, SVG, HTML, images</td>
+            <td class="num">4–6 MB<br><small>static</small></td>
+            <td class="w">Fastest of the three in independent benchmarks, best render quality after PDFium. This is what SumatraPDF is built on, which is why it is 8 MB and instant. One dependency replaces six.</td>
+          </tr>
+          <tr>
+            <td><b>PDFium</b><br><small><code>pdfium-render</code></small></td>
+            <td><span class="pill p-yes">BSD-3</span></td>
+            <td>PDF only</td>
+            <td class="num">~10 MB<br><small>shared lib</small></td>
+            <td class="w">Best correctness on messy real-world PDFs, no licence strings attached. But you still need separate libraries for EPUB, comics, DjVu, images — each with its own licence and its own bugs.</td>
+          </tr>
+          <tr>
+            <td><b>Poppler</b></td>
+            <td><span class="pill p-no">GPL-2+</span></td>
+            <td>PDF only</td>
+            <td class="num">20 MB+<br><small>+ deps</small></td>
+            <td class="w">Slowest of the three and the worst render quality in head-to-head tests. Effectively Linux-first. Not worth it for this project.</td>
+          </tr>
+          <tr>
+            <td><b>hayro</b><br><small>pure Rust · a resvg maintainer</small></td>
+            <td><span class="pill p-yes">Apache/MIT</span></td>
+            <td>PDF only</td>
+            <td class="num">pure Rust<br><small>no C toolchain</small></td>
+            <td class="w">A PDF <em>rasteriser</em> built for exactly this job: it never builds an editable model, so parsing is faster and lighter than lopdf-style crates. 1,600+ test PDFs, plus <code>hayro-svg</code> and standalone JBIG2 / JPEG2000 / CCITT decoders you would otherwise have to source. Young: no encrypted PDFs yet, and performance work is explicitly unfinished.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. REQUIREMENTS LEDGER ============ -->
+  <section id="s2">
+    <div class="snum"><i></i>02 — requirements ledger</div>
+    <h2>Your list, scored honestly</h2>
+    <p>Every requirement you stated, with a verdict: <span class="pill p-yes">proven</span> something
+      shipping today already does it, <span class="pill p-mid">constrained</span> doable but the OS will
+      push back somewhere, <span class="pill p-no">not free</span> it costs you size, time or a licence.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th style="width:44px">#</th><th class="w">Requirement</th><th class="w">How it is actually done</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="num">R1</td><td class="w">Read-only, no extra functions</td><td class="w">Delete the feature list. No save, no annotate, no print dialog, no share. The renderer is opened in read-only mode and never writes to the file — enforced at the engine API level, not the UI.</td><td><span class="pill p-yes">Proven</span></td></tr>
+          <tr><td class="num">R2</td><td class="w">Small binary, portable</td><td class="w">Single statically-linked binary. Windows: one <code>.exe</code> in a folder, no install, no registry writes unless you ask. Linux: AppImage. macOS: <code>.app</code> bundle (portable is not an option there).</td><td><span class="pill p-yes">Proven — 8 MB is the reference</span></td></tr>
+          <tr><td class="num">R3</td><td class="w">Superfast launch</td><td class="w">Native toolkit, no webview, no runtime. Splash-less: create window → mmap file → render page 1 → show. Target ≤300 ms cold on an SSD, ≤100 ms warm.</td><td><span class="pill p-yes">Proven</span></td></tr>
+          <tr><td class="num">R4</td><td class="w">Large format list</td><td class="w">Seven format families in v1.0 — PDF, images, comics, EPUB, XPS, SVG, text — about twenty extensions in all, from one engine plus a few small decoders. Office documents land in a separate, deliberately reduced mode — see §4.</td><td><span class="pill p-mid">Constrained</span></td></tr>
+          <tr><td class="num">R5</td><td class="w">Scroll + zoom, smooth on huge files</td><td class="w">Virtualised scroll with a tile cache: only visible pages exist as bitmaps, evicted LRU. Draft render at low DPI during motion, crisp render on settle. This is the single biggest engineering item.</td><td><span class="pill p-yes">Proven pattern</span></td></tr>
+          <tr><td class="num">R6</td><td class="w">Shell right-click integration</td><td class="w">Windows: file association + static verb (registry, installer-time). macOS: <code>CFBundleDocumentTypes</code> in Info.plist. Linux: <code>.desktop</code> file with <code>MimeType=</code> plus a KDE service menu.</td><td><span class="pill p-mid">Easy on 2, fiddly on Windows 11</span></td></tr>
+          <tr><td class="num">R7</td><td class="w">Global shortcut to open the selected file</td><td class="w">Win32 <code>RegisterHotKey</code>; macOS Carbon <code>RegisterEventHotKey</code> (needs <em>no</em> Accessibility grant); Linux X11 <code>XGrabKey</code>, Wayland only via the GlobalShortcuts portal.</td><td><span class="pill p-mid">X11 yes, Wayland depends on DE</span></td></tr>
+          <tr><td class="num">R8</td><td class="w">Tray icon, optional</td><td class="w"><code>tray-icon</code> crate (Windows/macOS/StatusNotifier). On Linux prefer the <code>ksni</code> backend — the GTK/AppIndicator path drags in GTK and can panic.</td><td><span class="pill p-mid">Doable, Linux is the tax</span></td></tr>
+          <tr><td class="num">R9</td><td class="w">Multiple documents, multiple windows</td><td class="w">Each window owns its own document + render thread. A second instance forwards paths to the first over a local socket, or spawns a window — your choice.</td><td><span class="pill p-yes">Proven</span></td></tr>
+          <tr><td class="num">R10</td><td class="w">Tab bar with pin</td><td class="w">Pinned tabs sort left, cannot be closed by middle-click, and persist across sessions. Cheap to build; easy to get right in one pass.</td><td><span class="pill p-yes">Proven</span></td></tr>
+          <tr><td class="num">R11</td><td class="w">Elegant, no chrome</td><td class="w">Content is the interface: no toolbar by default, a floating page indicator, auto-hiding scrollbar. Keyboard-first.</td><td><span class="pill p-yes">Proven (qView)</span></td></tr>
+          <tr><td class="num">R12</td><td class="w">Cross-platform from one codebase</td><td class="w">Rust + a native toolkit. One repo, three CI targets. macOS adds notarisation; Windows adds signing if you want SmartScreen to stay quiet.</td><td><span class="pill p-mid">Yes, with packaging work</span></td></tr>
+          <tr><td class="num">R13</td><td class="w">Search inside document</td><td class="w">Text extraction is available from the engine for PDF/EPUB/TXT. Not free: incremental search across a 3000-page PDF needs a background index and cancellation.</td><td><span class="pill p-mid">v1.1, not v1</span></td></tr>
+          <tr><td class="num">R15</td><td class="w">Select and copy text</td><td class="w">A read-only viewer that cannot copy is a screenshot. Text extraction per page, hit-testing per character box, and a clipboard write — all three engines give you the boxes.</td><td><span class="pill p-yes">v1, mandatory</span></td></tr>
+          <tr><td class="num">R16</td><td class="w">Hindi, Gujarati, Devanagari, Arabic in documents and in the UI</td><td class="w">Documents render through embedded fonts, so PDF is fine. Your <em>own</em> chrome is the risk: complex-script shaping needs a real shaper (cosmic-text / parley + rustybuzz), not a bitmap-font stack.</td><td><span class="pill p-mid">Easy to get wrong</span></td></tr>
+          <tr><td class="num">R17</td><td class="w">Screen-reader access</td><td class="w">AccessKit is the cross-platform answer and the Rust toolkits already speak it. A read-only viewer is exactly the app a screen-reader user needs, so this is not optional polish.</td><td><span class="pill p-mid">v1.1</span></td></tr>
+          <tr><td class="num">R14</td><td class="w">Open Office documents (.docx/.xlsx/.pptx)</td><td class="w">No honest path without shipping LibreOffice (~300 MB) or a commercial SDK. Every project that claims this either converts headlessly or lies about fidelity.</td><td><span class="pill p-no">Out of scope</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. FORMATS ============ -->
+  <section id="s3">
+    <div class="snum"><i></i>03 — the format matrix</div>
+    <h2>What “large list of formats” can honestly mean</h2>
+    <p>Fourteen formats is achievable and impressive. Forty is a maintenance liability. The line to draw
+      is: <strong>formats where the engine already rasterises the page</strong> (free) versus
+      <strong>formats that need a layout engine you would have to write</strong> (expensive) versus
+      <strong>formats that need an office suite</strong> (not this app).</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Format</th><th>Engine / library</th><th>Effort</th><th class="w">Notes</th><th>v1.0</th></tr></thead>
+        <tbody>
+          <tr><td class="w"><b>PDF</b> <small>.pdf, .ai</small></td><td>MuPDF</td><td><span class="pill p-yes">free</span></td><td class="w">The whole reason the app exists. Encrypted PDFs → password prompt, that is the one dialog you keep.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>Images</b> <small>PNG, JPEG, WebP, AVIF, JXL, TIFF, GIF, BMP, ICO, HEIC</small></td><td>MuPDF + <code>image</code> / <code>libheif</code> / <code>jxl-oxide</code></td><td><span class="pill p-yes">free</span></td><td class="w">HEIC and JXL are the only ones needing extra crates. All are pure decode-and-draw.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>Comics</b> <small>.cbz .cbr .cb7 .cbt</small></td><td>MuPDF (CBZ) + <code>unrar</code>/7z</td><td><span class="pill p-yes">free</span></td><td class="w">A zip full of images. Natural page-flip mode, no work beyond archive reading.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>EPUB</b> <small>.epub</small></td><td>MuPDF (reflow)</td><td><span class="pill p-mid">medium</span></td><td class="w">MuPDF reflows EPUB, but its typography is plain. Expect to spend time on font fallback and CSS you choose to ignore.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>XPS / OXPS</b></td><td>MuPDF</td><td><span class="pill p-yes">free</span></td><td class="w">Fixed-layout, identical code path to PDF. Free win.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>SVG</b></td><td>MuPDF / <code>resvg</code></td><td><span class="pill p-yes">free</span></td><td class="w">Render to a page. Zoom must re-rasterise, never scale the bitmap.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>Plain text &amp; code</b> <small>.txt .log .md .json .csv …</small></td><td>own renderer + <code>tree-sitter</code> or a tiny highlighter</td><td><span class="pill p-yes">free</span></td><td class="w">This is a text widget, not a document engine. Cheap, and the highest-perceived-value format after PDF.</td><td><span class="pill p-yes">Yes</span></td></tr>
+          <tr><td class="w"><b>MOBI / AZW3 / FB2</b></td><td>MuPDF</td><td><span class="pill p-mid">low</span></td><td class="w">Works, but DRM-free only. Say so in the README before someone files a bug.</td><td><span class="pill p-mid">v1.1</span></td></tr>
+          <tr><td class="w"><b>DjVu</b></td><td>DjVuLibre</td><td><span class="pill p-mid">medium</span></td><td class="w">GPL — fine if the app is already AGPL. Adds a second C dependency and its own build pain.</td><td><span class="pill p-mid">v1.1</span></td></tr>
+          <tr><td class="w"><b>CHM</b></td><td>libchm (MIT)</td><td><span class="pill p-mid">medium</span></td><td class="w">Archive + HTML. Small library, ugly edge cases.</td><td><span class="pill p-mid">v1.2</span></td></tr>
+          <tr><td class="w"><b>HTML</b> <small>.html .htm</small></td><td>MuPDF's HTML path</td><td><span class="pill p-mid">medium</span></td><td class="w">Renders, but is not a browser. Local files only, no scripts, no remote content — that is a security decision, not a limitation.</td><td><span class="pill p-mid">v1.1</span></td></tr>
+          <tr><td class="w"><b>Long tail</b> <small>fonts, certificates, SQLite, archives, .eml, .ics/.vcf</small></td><td>small Rust parsers + a table view</td><td><span class="pill p-yes">cheap</span></td><td class="w">None of these are documents, and each one is roughly a weekend: parse, then draw a table. They are also what makes a viewer <em>feel</em> universal — see §16, where a 1-binary Rust tool already ships all of them.</td><td><span class="pill p-mid">v1.2</span></td></tr>
+          <tr><td class="w"><b>Office / ODF</b> <small>.docx .xlsx .pptx .odt .ods .odp</small></td><td>Rust parsers (own layout)</td><td><span class="pill p-mid">medium</span></td><td class="w">Readable, not page-accurate — the full answer is §4. Roughly +2–4 MB, lazily loaded so it costs nothing at startup.</td><td><span class="pill p-mid">Read mode</span></td></tr>
+          <tr><td class="w"><b>PostScript / DVI</b></td><td>Ghostscript / TeX</td><td><span class="pill p-no">huge</span></td><td class="w">Only via an external converter. SumatraPDF does it by shelling out and caching — optional, at most.</td><td><span class="pill p-no">No</span></td></tr>
+          <tr><td class="w"><b>DRM-locked EPUB / Kindle</b></td><td>—</td><td><span class="pill p-no">illegal</span></td><td class="w">Out of scope by policy, not by difficulty.</td><td><span class="pill p-no">Never</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. OFFICE ============ -->
+  <section id="s4">
+    <div class="snum"><i></i>04 — office &amp; open document formats</div>
+    <h2>Office files: five honest tiers, one lie to avoid</h2>
+    <p>.docx, .xlsx, .pptx, .odt, .ods and .odp are not opaque binary blobs — they are zip archives of
+      XML. That moves them from “impossible” to “possible, with a caveat you have to put in the UI”. The
+      caveat is layout: a Word page is the output of a layout engine, and you would be writing a second
+      one. So the question is not <em>can</em> you render them, it is <em>what do you promise</em> when you do.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Tier</th><th class="w">What the user sees</th><th class="w">How it is built</th><th class="num">Cost</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>T1 · Read mode</b><br><small>docx, odt, rtf, and the rest of the text formats</small></td>
+            <td class="w">Text, headings, lists, tables, images, bold/italic/underline, hyperlinks — in a single reflowed column that you can resize and re-zoom like an EPUB. Page breaks, headers, footers, columns, floats and exact font metrics are approximated or dropped.</td>
+            <td class="w">Parse the package to a small document IR, emit HTML, lay it out with MuPDF's HTML path. This is precisely what VerseApp and Paperback already do in Rust.</td>
+            <td class="num">~1–2 MB<br><small>crates</small></td>
+            <td><span class="pill p-gold">Ship in v1.1</span></td>
+          </tr>
+          <tr>
+            <td class="w"><b>T2 · Grid mode</b><br><small>xlsx, ods, xls</small></td>
+            <td class="w">The sheet as a real virtualised grid: cell values, dates, cached formula results, basic fills and fonts, frozen panes. Column widths approximate. This is how people actually read a spreadsheet.</td>
+            <td class="w"><code>calamine</code> reads xlsx/xlsb/xls/ods — including styles — in pure Rust. Your own grid renderer, reusing the same tile/virtualisation machinery as PDF pages.</td>
+            <td class="num">~0.5 MB</td>
+            <td><span class="pill p-gold">Ship in v1.1</span></td>
+          </tr>
+          <tr>
+            <td class="w"><b>T3 · Slide mode</b><br><small>pptx, odp</small></td>
+            <td class="w">Each slide as a canvas: shape positions, text boxes, images, notes underneath. Positioning is close but not exact — a stray text box may wrap differently.</td>
+            <td class="w">Same IR, different renderer: a positioned shape list instead of a reflowed column.</td>
+            <td class="num">+1 MB</td>
+            <td><span class="pill p-mid">v1.2</span></td>
+          </tr>
+          <tr>
+            <td class="w"><b>T4 · Precise mode</b><br><small>any office format, when soffice exists</small></td>
+            <td class="w">A page-accurate rendering, because it <em>is</em> a PDF by then. This is the only honest WYSIWYG path.</td>
+            <td class="w">Shell out to LibreOffice headless, convert once, cache the PDF next to the document, then hand it to your own PDF engine. SumatraPDF uses exactly this pattern for DVI and CAJ files.</td>
+            <td class="num">0 MB<br><small>but 300 MB dependency</small></td>
+            <td><span class="pill p-mid">Opt-in only</span></td>
+          </tr>
+          <tr>
+            <td class="w"><b>T5 · Borrow the OS</b><br><small>Windows, macOS</small></td>
+            <td class="w">Whatever the platform's own previewer draws — usually perfect, because it is Office or iWork doing the drawing.</td>
+            <td class="w">Windows: host the registered <code>IPreviewHandler</code> out-of-process through <code>prevhost.exe</code> (QuickLook's Office plugin does this). macOS: <code>QLPreviewView</code>. Both give you a foreign window inside your tab — no zoom consistency, no cross-platform behaviour.</td>
+            <td class="num">0 MB<br><small>but needs Office installed</small></td>
+            <td><span class="pill p-info">Escape hatch</span></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">The lie to avoid</div>
+      <p>Never draw a reflowed DOCX inside a page-shaped white rectangle with a shadow and call it a
+        document preview. It looks like Word, so people will trust the line breaks, the page count and
+        the table widths — and then discover the PDF they export is a different document. Give read mode
+        its own chrome: full-width text, a resize handle, and one honest line at the top —
+        <em>“Reflowed view · layout approximated · Ctrl+Shift+O for exact rendering”</em>.</p>
+    </div>
+
+    <h3 style="margin-top:30px">The crates that make T1–T3 cheap</h3>
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Crate</th><th class="w">Covers</th><th class="w">What it gives you</th><th>Caveat</th></tr></thead>
+        <tbody>
+          <tr><td class="w"><code>office_oxide</code></td><td class="w">DOCX, XLSX, PPTX + legacy DOC, XLS, PPT</td><td class="w">One unified <code>Document</code> handle with <code>to_html()</code>, <code>plain_text()</code> and a format-agnostic IR. Zero C dependencies, WASM-capable, and it has an explicit resource-limits module for untrusted input.</td><td>Young project. Published parse times are sub-millisecond on a large corpus, but verify licence and edge cases before committing.</td></tr>
+          <tr><td class="w"><code>calamine</code></td><td class="w">XLSX, XLSB, XLS, ODS</td><td class="w">The de-facto Rust spreadsheet reader: values, formulas, and now cell styles, fills and fonts — everything a grid view needs.</td><td>Spreadsheets only, and it reads rather than lays out. You draw the grid.</td></tr>
+          <tr><td class="w"><code>ferrodoc</code></td><td class="w">DOCX, ODT, EPUB, HTML, Markdown</td><td class="w">A Pandoc-compatible AST in pure Rust with a DOCX reader and an HTML writer — the cleanest route from ODF/OOXML to something you can lay out, with conformance tests against pandoc.</td><td>Its focus is conversion fidelity, not visual fidelity. Same trade-off as T1.</td></tr>
+          <tr><td class="w"><code>docx-rs</code></td><td class="w">DOCX</td><td class="w">Mature, widely used reader/writer for WordprocessingML. Fine if you only want the document body and tables.</td><td>Reads structure, not styling. Tables of contents and fields need your own handling.</td></tr>
+          <tr><td class="w"><code>libreoffice-pure</code></td><td class="w">DOCX, XLSX, PPTX, ODT, ODS, ODP → PDF/HTML/SVG</td><td class="w">A pure-Rust office toolkit that mirrors the <code>soffice</code> CLI without the install, and claims 10–187× faster conversions than real LibreOffice.</td><td>Its own README says plainly it is not feature-parity with LibreOffice. Treat as a fast T4, not a replacement for T1.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">If you do build T4</div>
+      <p>LibreOffice headless costs roughly 2–3 seconds per document, and a cold start can be far worse;
+        batching amortises it to about 100 ms per file, and a resident listener removes the startup
+        entirely. Two traps: two <code>soffice</code> processes cannot share a user profile (the second
+        exits silently with no output), and if the fonts used by the document are not installed, the
+        layout silently shifts. Cache the converted PDF and invalidate on mtime, or you will pay that
+        cost on every open.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. STACK ============ -->
+  <section id="s5">
+    <div class="snum"><i></i>05 — stack options</div>
+    <h2>Five ways to build it, ranked by what you actually get</h2>
+    <p>Size figures below are hello-world-class release builds from published benchmarks and project
+      releases; treat them as ±30%, not gospel. What matters is the ordering, which is stable.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Option</th><th>UI</th><th class="num">Binary</th><th class="num">Cold start</th><th class="num">Effort</th><th class="w">Verdict</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>A · Rust + a PDF engine</b><br><small>MuPDF or hayro, behind winit/wgpu</small></td>
+            <td>egui or custom</td><td class="num">~12–16 MB</td><td class="num">150–250 ms</td><td class="num">high</td>
+            <td class="w"><span class="pill p-gold">Recommended</span> Best balance: memory-safe, one toolchain for all three OSes, MuPDF does the heavy lifting. egui is ~5 MB on its own and 175 ms to first frame in benchmarks — acceptable, not luxurious.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>B · C++ + MuPDF + FLTK/wx</b><br><small>the SumatraPDF path</small></td>
+            <td>FLTK / wx</td><td class="num">7–10 MB</td><td class="num">40–100 ms</td><td class="num">very high</td>
+            <td class="w"><span class="pill p-info">Fastest possible</span> FLTK is 40 ms / 1.8 MB RSS in benchmarks. But you hand-write text rendering, HiDPI, font fallback and every widget. Two years of weekends.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>C · Qt 6 + Qt PDF</b><br><small>PDFium inside</small></td>
+            <td>Qt Widgets</td><td class="num">45–70 MB</td><td class="num">~300 ms</td><td class="num">low</td>
+            <td class="w"><span class="pill p-mid">Fastest to ship</span> Everything is already built: text layout, PDF, images, print, accessibility. But “small and portable” dies at the deploy step — you are shipping a toolkit, not an app.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>D · Rust + Slint</b></td>
+            <td>Slint DSL</td><td class="num">~20 MB</td><td class="num">~150 ms</td><td class="num">medium</td>
+            <td class="w"><span class="pill p-mid">Viable</span> Nicest-looking native Rust UI and a live preview designer. Licence needs care (GPL/commercial/royalty-free tiers) and it is heavier than egui.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>E · Tauri / Electron</b></td>
+            <td>webview</td><td class="num">~5 MB + runtime</td><td class="num">470–700 ms</td><td class="num">low</td>
+            <td class="w"><span class="pill p-no">Reject</span> pdf.js on a 1000-page file is the exact experience you are trying to escape, and a webview is 100 MB of RSS before you draw anything.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">Recommendation</div>
+      <p><strong>Option A, with the engine chosen in §12.</strong> Rust workspace, a thin <code>winit</code> +
+        <code>wgpu</code> shell (or <code>egui</code> for the chrome only, with the page drawn as a
+        textured quad), and the engine behind your own <code>Document</code> trait. Which engine you put
+        behind it is a licence decision, not an architecture one — and for this estate the answer changed.
+        See §12.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. ARCHITECTURE ============ -->
+  <section id="s6">
+    <div class="snum"><i></i>06 — architecture</div>
+    <h2>The hot path, end to end</h2>
+    <p>Speed is not an optimisation phase at the end; it is this pipeline, built once, correctly. The
+      rule: <strong>the UI thread never blocks on decode, and the renderer never draws more than it can see.</strong></p>
+
+    <div class="flow">
+      <div class="step"><div class="k">step 01</div><div class="t">Launch</div><div class="d">Parse argv, check single-instance socket, create window with a dark clear colour — visible in ~40 ms.</div><div class="m">winit · single instance</div></div>
+      <div class="step"><div class="k">step 02</div><div class="t">Open</div><div class="d">mmap the file, sniff the magic bytes (never trust the extension), hand a handle to the engine.</div><div class="m">memmap2 · file-type</div></div>
+      <div class="step"><div class="k">step 03</div><div class="t">Layout</div><div class="d">Read page count and page boxes, build a virtual scroll height. No rasterising yet.</div><div class="m">Document trait</div></div>
+      <div class="step">
+        <div class="k">step 04</div><div class="t">Tile render</div>
+        <div class="d">Worker threads rasterise only visible tiles: draft DPI while scrolling, final DPI when still. Generation counter cancels stale work.</div>
+        <div class="m">rayon · LRU cache</div>
+      </div>
+      <div class="step"><div class="k">step 05</div><div class="t">Present</div><div class="d">Upload finished tiles to the GPU, draw, sleep. A still window should request zero frames.</div><div class="m">wgpu · on-demand</div></div>
+    </div>
+
+    <div class="layers">
+      <div class="card">
+        <h3><span>CORE</span>One trait, many formats</h3>
+        <ul>
+          <li><b>Document trait</b> — <code>page_count</code>, <code>page_size</code>, <code>render(page, rect, dpi)</code>, <code>text(page)</code>. Every format implements it.</li>
+          <li><b>A router in front of it</b> — extension and magic bytes → pipeline, with heavy pipelines loaded only when hit. This is how one binary can claim 200 extensions without paying for them at startup (§16).</li>
+          <li><b>No format logic in the UI.</b> A new format must never touch the viewer.</li>
+          <li><b>Render cancellation</b> by generation id — a fast flick must not build a queue.</li>
+          <li><b>One engine instance per window</b> — PDFium is not thread-safe and MuPDF contexts are not shareable. hayro is the exception: it is happy on a worker pool.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span>MEMORY</span>The budget that keeps it small</h3>
+        <ul>
+          <li><b>LRU tile cache</b> capped in bytes (default ~256 MB), not in pages.</li>
+          <li><b>Zero-copy</b>: mmap the file, let the engine read from the mapping.</li>
+          <li><b>No page ever fully rasterised</b> at high DPI unless it is on screen.</li>
+          <li><b>Drop thumbnails</b> when the sidebar is closed.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span>UI</span>Chrome that disappears</h3>
+        <ul>
+          <li><b>No toolbar.</b> A floating page chip and a fade-out scrollbar.</li>
+          <li><b>Tab strip</b> only when ≥2 tabs; pinned tabs sort left with a dot.</li>
+          <li><b>Keys:</b> <code>Space</code>/<code>PgDn</code> page, <code>+</code>/<code>-</code> zoom, <code>1</code> fit width, <code>2</code> fit page, <code>F11</code> fullscreen, <code>Ctrl+W</code> close, <code>Ctrl+P</code> pin.</li>
+          <li><b>Light/dark follows the OS</b>, and the page background dims in dark mode instead of inverting the document.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span>PLATFORM</span>The thin, ugly layer</h3>
+        <ul>
+          <li><b>Windows</b>: registry verbs, <code>RegisterHotKey</code>, <code>Shell_NotifyIcon</code>.</li>
+          <li><b>macOS</b>: Info.plist types, Carbon hotkey, <code>NSStatusItem</code>.</li>
+          <li><b>Linux</b>: <code>.desktop</code> + MimeType, X11 grab / Wayland portal, <code>ksni</code> tray.</li>
+          <li><b>Isolate it</b> behind one <code>platform</code> module with three implementations and graceful no-ops.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6. OS INTEGRATION ============ -->
+  <section id="s7">
+    <div class="snum"><i></i>07 — os integration</div>
+    <h2>Where the three desktops disagree</h2>
+    <p>This is the part of the plan that looks trivial and is not. Each row below is a real API with a
+      real failure mode.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Capability</th><th class="w">Windows</th><th class="w">macOS</th><th class="w">Linux</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>Right-click → Open with</b></td>
+            <td class="w">Registry: <code>HKCR\Applications\app.exe</code> with <code>shell\open\command</code> and <code>SupportedTypes</code>. No DLL needed. Appears in the Windows 11 “Open with” list automatically.</td>
+            <td class="w"><code>CFBundleDocumentTypes</code> + <code>CFBundleTypeRole = Viewer</code> in Info.plist, then <code>lsregister</code>.</td>
+            <td class="w"><code>.desktop</code> file with <code>MimeType=</code> and <code>Exec=… %F</code> into <code>/usr/share/applications</code>.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>A custom verb on the context menu</b></td>
+            <td class="w"><span class="pill p-mid">trap</span> Classic <code>IContextMenu</code> only shows under “Show more options”. A first-level entry on the Windows 11 menu needs <code>IExplorerCommand</code> in a COM DLL <em>plus</em> package identity (MSIX or a sparse package) — a day of work and a signing certificate.</td>
+            <td class="w">Finder Quick Action / Services, or a Finder Sync extension for a real menu item.</td>
+            <td class="w">KDE service menu (<code>.desktop</code> in <code>kio/servicemenus</code>). Nautilus scripts or <code>nautilus-python</code> for GNOME.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Global hotkey</b></td>
+            <td class="w"><code>RegisterHotKey</code>. Watch for OS-reserved chords — they fail silently-ish; report the failure in the UI.</td>
+            <td class="w">Carbon <code>RegisterEventHotKey</code>: <strong>no Accessibility permission</strong>, and it consumes the chord. The modern NSEvent monitor needs TCC and cannot consume. Use Carbon.</td>
+            <td class="w">X11: <code>XGrabKey</code>, works. Wayland: only the <code>org.freedesktop.portal.GlobalShortcuts</code> portal — KDE 5.27+, GNOME 48+, Hyprland 0.20+. Older GNOME: document it, do not fake it.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Tray icon</b></td>
+            <td class="w">Straightforward.</td>
+            <td class="w">Straightforward, must be created on the main thread after the loop starts.</td>
+            <td class="w">Needs a StatusNotifier host. GTK/AppIndicator path can panic; use <code>ksni</code>. On a bare WM there may be no tray at all — degrade to nothing.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>“Open selected file in viewer”</b></td>
+            <td class="w">Explorer selection is not exposed to a hotkey; the practical version is: register as default handler, or copy the path and paste.</td>
+            <td class="w">Finder selection via AppleScript / Services — workable.</td>
+            <td class="w">Depends on the file manager; KDE and Nautilus expose it, others do not.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">Honest note on R7</div>
+      <p>A truly global “open whatever file is selected in Explorer right now” hotkey is not something the
+        shell offers. What you can build, and what people actually mean, is: press the hotkey → a
+        minimal command palette opens → the path is already in the clipboard or you type three letters →
+        the document opens in 300 ms. Design for that and it will feel like the feature you wanted.</p>
+    </div>
+  </section>
+
+  <!-- ============ 7. PERFORMANCE BUDGET ============ -->
+  <section id="s8">
+    <div class="snum"><i></i>08 — the budget</div>
+    <h2>Tight numbers, written down before the first commit</h2>
+    <p>“Superfast and lightweight” only survives if it is a CI check, not a vibe. These are the numbers to
+      defend; every release measures them on a fixed laptop.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Metric</th><th class="num">Target</th><th class="num">Fail if</th><th class="w">How it is enforced</th></tr></thead>
+        <tbody>
+          <tr><td class="w">Cold start to visible window</td><td class="num">≤ 300 ms</td><td class="num">&gt; 600 ms</td><td class="w">Timestamp in <code>main()</code> vs first frame; printed in debug builds, asserted in CI.</td></tr>
+          <tr><td class="w">First page of a 50 MB PDF</td><td class="num">≤ 150 ms</td><td class="num">&gt; 400 ms</td><td class="w">Benchmark corpus in the repo, run on every PR.</td></tr>
+          <tr><td class="w">Scroll, 1000-page PDF</td><td class="num">60 fps</td><td class="num">&lt; 45 fps</td><td class="w">Draft-DPI rendering during motion; a frame budget of 16 ms.</td></tr>
+          <tr><td class="w">Idle RSS, one small PDF</td><td class="num">≤ 60 MB</td><td class="num">&gt; 120 MB</td><td class="w">Tile cache cap + no thumbnails until asked.</td></tr>
+          <tr><td class="w">Binary, stripped</td><td class="num">≤ 20 MB</td><td class="num">&gt; 30 MB</td><td class="w">MuPDF features trimmed at build time; <code>lto = "thin"</code>, <code>strip = true</code>.</td></tr>
+          <tr><td class="w">Installer / portable zip</td><td class="num">≤ 25 MB</td><td class="num">&gt; 40 MB</td><td class="w">No bundled fonts beyond one UI face; system fonts for content.</td></tr>
+          <tr><td class="w">Dependencies (direct crates)</td><td class="num">≤ 25</td><td class="num">&gt; 40</td><td class="w"><code>cargo deny</code> in CI — this is how “no bloat” stays true in year two.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 9. ECOSYSTEM ============ -->
+  <section id="s9">
+    <div class="snum"><i></i>09 — the ecosystem map</div>
+    <h2>Every serious lightweight viewer, and the one idea in each</h2>
+    <p>v2 of this plan listed ten projects. That was thin. This is the wider sweep — what each one is
+      built on, its licence, and the single idea worth copying. Read the four marked
+      <span class="pill p-gold">study</span> before writing anything: between them they contain most of
+      your architecture, already debugged.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Project</th><th class="w">Built on</th><th>Licence</th><th class="w">The idea to take</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>KOReader</b><br><small>Lua + MuPDF + CREngine + DjVuLibre</small></td>
+            <td class="w">Fixed-layout <em>and</em> reflowable formats in one app, on e-ink hardware</td>
+            <td><span class="pill p-no">AGPL-3</span></td>
+            <td class="w"><span class="pill p-gold">Study</span> The reference implementation of your §6: a <code>DocumentRegistry</code> maps extension → provider → engine, every engine inherits one abstract <code>Document</code> class (<code>renderPage</code>, <code>getPageTextBoxes</code>, <code>getNativePageDimensions</code>), and results land in a shared <code>TileCacheItem</code> cache. A decade of devices have hardened it.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>SumatraPDF</b><br><small>C++ + MuPDF</small></td>
+            <td class="w">7.9 MB portable, 14 formats, Windows</td>
+            <td><span class="pill p-no">(A)GPLv3</span></td>
+            <td class="w"><span class="pill p-gold">Study</span> How to keep it this small: a thin engine abstraction, aggressive format sniffing, and a vendored <code>ext/</code> tree instead of a package manager. The size discipline is the product.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>MuPDF's own viewer</b><br><small>C + OpenGL</small></td>
+            <td class="w">PDF, XPS, EPUB, CBZ — the engine's reference client</td>
+            <td><span class="pill p-no">AGPL-3</span></td>
+            <td class="w"><span class="pill p-gold">Study</span> The lower bound. A complete, usable viewer in a few thousand lines. Read it to calibrate how little UI a document actually needs.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Sioyek</b><br><small>C++ / Qt</small></td>
+            <td class="w">Research papers and technical books</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">The interaction model: a searchable command palette, browser-like location history across documents, single-key marks, and “portals” — a second window pinned to the figure you are reading about. Proof a viewer can be entirely keyboard.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>qpdfview</b><br><small>C++ / Qt + Poppler</small></td>
+            <td class="w">Tabbed document viewer, reported around 15 MB RSS</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">Tabs with almost no chrome, and a reminder that Poppler's licence ceiling is real. Best existing answer to “tabs, but quiet”.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>llpp</b><br><small>OCaml + MuPDF</small></td>
+            <td class="w">PDF, EPUB, XPS, CBZ</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">A MuPDF integration that stays small: keyboard grammar, no toolbar, fast incremental search. Useful if you want the MuPDF path without Qt.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Zathura</b><br><small>C + one plugin per backend</small></td>
+            <td class="w">PDF, DjVu, PostScript via separate <code>.so</code> plugins</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">How to split format backends into separate libraries without inventing a plugin framework — the boundary is a C ABI and nothing more.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Papers</b> / <b>Evince</b><br><small>C / GTK4</small></td>
+            <td class="w">GNOME's default document viewer</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">Linux desktop citizenship: MIME registration, recent-files integration, the small behaviours users notice when they are missing.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>PreviewQt</b><br><small>Qt</small></td>
+            <td class="w">Quick-look style preview of “all kinds of files” on Linux</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">The spacebar-preview interaction outside GNOME and KDE — closest existing thing to the summon behaviour you described.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>GNOME Sushi</b><br><small>GTK4 + Glycin</small></td>
+            <td class="w">Spacebar preview inside Nautilus</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">How a previewer registers itself with a file manager, and why sandboxed image decoding (Glycin) is worth the indirection.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>KDE Maki</b><br><small>Qt6 / Kirigami</small></td>
+            <td class="w">Dolphin service-menu previewer</td>
+            <td><span class="pill p-mid">GPL</span></td>
+            <td class="w">Dolphin registration, and the honest LibreOffice-based answer for Office documents — see §4, tier T4.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>QuickLook</b><br><small>C# / WPF</small></td>
+            <td class="w">macOS-style spacebar preview on Windows, 100+ formats</td>
+            <td><span class="pill p-no">GPL-3</span></td>
+            <td class="w">The plugin-host model — and its bill: ~100 MB installer for what is conceptually a viewer. Read it as a warning about extensibility.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>PowerToys Peek</b><br><small>C# / WinUI</small></td>
+            <td class="w">Microsoft's own spacebar preview</td>
+            <td><span class="pill p-yes">MIT</span></td>
+            <td class="w"><span class="pill p-gold">Study</span> The cleanest reference for hosting an existing <code>IPreviewHandler</code> out-of-process — §4, tier T5 — including the class-factory caching that keeps <code>prevhost.exe</code> warm.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>VerseApp</b><br><small>Rust / Iced + MuPDF</small></td>
+            <td class="w">PDF, EPUB, DOCX, DjVu, XPS, MOBI, CBZ, FB2, multi-tab</td>
+            <td><span class="pill p-mid">check</span></td>
+            <td class="w">Closest Rust prior art: <code>DocumentBackend</code> trait, virtualised continuous scroll, and the page-offset arithmetic that keeps mixed-height pages aligned.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Torto</b><br><small>Rust + egui + Parley + Vello</small></td>
+            <td class="w">Native ebook reader, no webview</td>
+            <td><span class="pill p-yes">MIT</span></td>
+            <td class="w">What native reflowable text layout actually costs when you own the whole stack — and how good it looks when you do.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Paperback</b><br><small>Rust + wxWidgets</small></td>
+            <td class="w">Accessible multi-format reader</td>
+            <td><span class="pill p-yes">MIT</span></td>
+            <td class="w">Accessibility done properly in a native reader — screen-reader navigation by heading, figure and table. The bar for R17.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>qView</b><br><small>C++ / Qt</small></td>
+            <td class="w">Minimal image viewer</td>
+            <td><span class="pill p-mid">GPLv3</span></td>
+            <td class="w">Restraint as a product decision: no toolbars, just the image and a title bar.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>nsxiv</b><br><small>C + X11</small></td>
+            <td class="w">A whole image viewer in a fraction of a megabyte</td>
+            <td><span class="pill p-mid">GPL-2+</span></td>
+            <td class="w">The discipline check. Every feature you add should have a reason that survives being compared to this.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>ImageGlass</b><br><small>C# / .NET</small></td>
+            <td class="w">90+ image formats, cross-platform</td>
+            <td><span class="pill p-mid">GPLv3</span></td>
+            <td class="w">A ready-made decoder matrix — the checklist for the image half of your format table, including HEIC, JXL and RAW.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 10. PICKLIST ============ -->
+  <section id="s10">
+    <div class="snum"><i></i>10 — the component picklist</div>
+    <h2>Every job, and the crate that does it</h2>
+    <p>This is the shopping list. It is deliberately short — roughly 25 direct dependencies — and every
+      entry was chosen for licence, size or the fact that it has no C dependency at all.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Job</th><th class="w">Crate</th><th class="w">Why this one</th></tr></thead>
+        <tbody>
+          <tr><td class="w"><b>Window, input, HiDPI</b></td><td class="w"><code>winit</code></td><td class="w">The only serious cross-platform windowing layer in Rust. Handles Wayland, X11, Win32 and Cocoa; gives you the device pixel ratio you need for crisp re-rasterisation.</td></tr>
+          <tr><td class="w"><b>Presenting pixels</b></td><td class="w"><code>wgpu</code> <small>or</small> <code>softbuffer</code></td><td class="w">wgpu for GPU blits and scaling; softbuffer if you want zero graphics-stack risk and are happy on the CPU. A document viewer blits textures — it does not need a scene graph.</td></tr>
+          <tr><td class="w"><b>Chrome widgets</b></td><td class="w"><code>egui</code> <small>or</small> <code>iced</code></td><td class="w">Use one for the tab strip, menus and dialogs only; draw the page yourself as a textured quad. This keeps the UI layer replaceable and the document path pure.</td></tr>
+          <tr><td class="w"><b>Text shaping, including Indic</b></td><td class="w"><code>cosmic-text</code> <small>or</small> <code>parley</code> + <code>swash</code> + <code>fontdb</code></td><td class="w">R16 depends on this. Both do real shaping via rustybuzz; egui's built-in text stack does not. Also needed for Arabic, Thai and anything with ligatures.</td></tr>
+          <tr><td class="w"><b>PDF — permissive</b></td><td class="w"><code>hayro</code> (+ <code>hayro-svg</code>)</td><td class="w">Pure Rust, Apache/MIT, read-only by design, with JBIG2 / JPEG2000 / CCITT decoders bundled. No C toolchain means trivial Windows, Linux and ARM64 cross-compiles.</td></tr>
+          <tr><td class="w"><b>PDF — fastest, most formats</b></td><td class="w"><code>mupdf</code></td><td class="w">One dependency for PDF, EPUB, XPS, CBZ, SVG, HTML and images. The AGPL is the price. Builds the C library for you; disable default features to shed OCR and formats you do not ship.</td></tr>
+          <tr><td class="w"><b>PDF — maximum correctness</b></td><td class="w"><code>pdfium-render</code> + <code>pdfium-binaries</code></td><td class="w">When a 1998 PDF has to render exactly like Chrome renders it. Runtime-bound shared library, so it can be swapped without a rebuild.</td></tr>
+          <tr><td class="w"><b>EPUB parsing</b></td><td class="w"><code>rbook</code> <em>or</em> <code>epub</code></td><td class="w">If you go hayro-first you need your own reflow. Parse the container, read the spine, lay out the XHTML yourself — this is the single largest piece of work in the permissive path.</td></tr>
+          <tr><td class="w"><b>Images</b></td><td class="w"><code>image</code>, <code>zune-jpeg</code>, <code>image-webp</code>, <code>jxl-oxide</code>, <code>libheif-rs</code>, <code>rawler</code></td><td class="w">Core formats from <code>image</code>; add JXL, HEIC and RAW only if you actually promise them. Each is a separate licence and a separate CVE surface.</td></tr>
+          <tr><td class="w"><b>SVG</b></td><td class="w"><code>resvg</code> / <code>usvg</code></td><td class="w">The best SVG renderer in any language, permissive, and the same author as hayro. Parses separately from rendering, so you can rasterise at any zoom.</td></tr>
+          <tr><td class="w"><b>Spreadsheets</b></td><td class="w"><code>calamine</code></td><td class="w">XLSX, XLSB, XLS and ODS with values, formulas and cell styles. The whole of §4 tier T2.</td></tr>
+          <tr><td class="w"><b>Office text</b></td><td class="w"><code>office_oxide</code> / <code>docx-rs</code> / <code>ferrodoc</code></td><td class="w">§4 tier T1. Start with <code>office_oxide</code> for breadth, fall back to <code>ferrodoc</code> if you want a Pandoc-compatible AST you can reason about.</td></tr>
+          <tr><td class="w"><b>Markdown &amp; code</b></td><td class="w"><code>comrak</code>, <code>syntect</code></td><td class="w">GFM to HTML, then your own layout; syntect for highlighting with Sublime grammars.</td></tr>
+          <tr><td class="w"><b>Mapping the file</b></td><td class="w"><code>memmap2</code></td><td class="w">Never read a 400 MB PDF into a <code>Vec</code>. Map it and let the engine page it in.</td></tr>
+          <tr><td class="w"><b>Archives (CBZ/CBR)</b></td><td class="w"><code>zip</code>, <code>unrar</code></td><td class="w">Comics are archives of images; CBR needs a RAR decoder, which is the only awkward licence in this list.</td></tr>
+          <tr><td class="w"><b>Tray icon</b></td><td class="w"><code>tray-icon</code> <small>with the <code>ksni</code> backend on Linux</small></td><td class="w">The GTK/AppIndicator path can panic on a machine without GTK initialised; the StatusNotifier path cannot.</td></tr>
+          <tr><td class="w"><b>Menus</b></td><td class="w"><code>muda</code></td><td class="w">Native menu bar and tray context menus. Optional — a keyboard-first viewer can skip it entirely.</td></tr>
+          <tr><td class="w"><b>Global hotkey</b></td><td class="w"><code>global-hotkey</code> <small>+ <code>ashpd</code> for Wayland</small></td><td class="w">The crate is X11-only on Linux; the portal half you write yourself with ashpd, or accept a documented gap.</td></tr>
+          <tr><td class="w"><b>Single instance &amp; summon</b></td><td class="w"><code>interprocess</code> <small>or</small> plain loopback TCP</td><td class="w">A second launch must hand its path to the running window, not start a rival. Your CLDR already does this over loopback TCP — copy it.</td></tr>
+          <tr><td class="w"><b>Dialogs</b></td><td class="w"><code>rfd</code></td><td class="w">Native open/save panels through XDG portals on Linux. Only used for “open another file” and the PDF password prompt.</td></tr>
+          <tr><td class="w"><b>Clipboard</b></td><td class="w"><code>arboard</code></td><td class="w">Text and image clipboard for R15.</td></tr>
+          <tr><td class="w"><b>File watching</b></td><td class="w"><code>notify</code></td><td class="w">Auto-reload when the file changes underneath you — cheap, and it makes the viewer feel alive.</td></tr>
+          <tr><td class="w"><b>Config &amp; state</b></td><td class="w"><code>serde</code> + <code>toml</code></td><td class="w">One <code>config.toml</code> next to the binary. Portable means no registry and no dotfiles.</td></tr>
+          <tr><td class="w"><b>Packaging</b></td><td class="w"><code>cargo-bundle</code>, <code>cargo-bloat</code>, <code>cargo-deny</code>, <code>cross</code></td><td class="w">Bundle the <code>.app</code>, measure what got big, keep the licence tree clean, and cross-compile ARM64 without a second machine.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 11. GAPS ============ -->
+  <section id="s11">
+    <div class="snum"><i></i>11 — what the first two passes missed</div>
+    <h2>The things that make it feel finished</h2>
+    <p>None of these are features in the “bloat” sense. They are the difference between a demo that opens
+      a PDF and a viewer someone keeps on their taskbar.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Gap</th><th class="w">Why it matters</th><th class="w">What it costs</th></tr></thead>
+        <tbody>
+          <tr><td class="w"><b>Selection and copy</b></td><td class="w">Read-only does not mean inert. The first thing anyone does with a document is copy a line out of it. Without this, the app is a picture frame.</td><td class="w">Per-character boxes from the engine, hit-testing, drag selection, a clipboard write. One focused week.</td></tr>
+          <tr><td class="w"><b>Complex-script shaping</b></td><td class="w">Your corpus is Hindi, Gujarati and Sanskrit; your users read Devanagari daily. PDF is safe (embedded fonts), but your <em>own</em> chrome, search results and reflowed EPUB are not.</td><td class="w">A real shaper and bundled Noto faces — or a UI stack that already has one.</td></tr>
+          <tr><td class="w"><b>Screen-reader access</b></td><td class="w">A read-only viewer is precisely the app a blind user needs, and the one most Rust apps fail to serve.</td><td class="w">AccessKit wiring in the toolkit; more if you build custom widgets.</td></tr>
+          <tr><td class="w"><b>Per-document memory</b></td><td class="w">Last page, zoom, scroll offset, rotation — restored on reopen. Reopening a 400-page manual at page 1 is the fastest way to be uninstalled.</td><td class="w">A tiny sidecar keyed by path + mtime. Half a day.</td></tr>
+          <tr><td class="w"><b>Dark documents, not just dark chrome</b></td><td class="w">Night reading means dimming or inverting the page, and doing it without destroying images.</td><td class="w">A shader or a colour transform in the blit path; a per-document toggle.</td></tr>
+          <tr><td class="w"><b>Auto-reload</b></td><td class="w">You edit a document, the viewer follows. Anyone who reads what they write will expect it.</td><td class="w"><code>notify</code> plus cache invalidation — an hour, if the cache is keyed on mtime.</td></tr>
+          <tr><td class="w"><b>Fractional HiDPI</b></td><td class="w">150% scaling on Windows is the default on most laptops. Scaling a bitmap looks like 2008.</td><td class="w">Render at <code>scale_factor</code>, never stretch. Free if the tile cache is keyed by DPI.</td></tr>
+          <tr><td class="w"><b>Password-protected PDFs</b></td><td class="w">One dialog, kept. Every other feature can be cut; this one is a wall people hit weekly.</td><td class="w">Engine API, one modal, no storage of the password. hayro does not support it yet — check before committing to that path.</td></tr>
+          <tr><td class="w"><b>Thumbnail sidebar</b></td><td class="w">Navigation in a 600-page document. And it is nearly free: the same tile renderer at 1/10 scale.</td><td class="w">A virtualised strip and a second, smaller LRU cache.</td></tr>
+          <tr><td class="w"><b>Crash isolation</b></td><td class="w">A malformed PDF must not take the window with it. One hostile file should cost you one tab, not the session.</td><td class="w">Engine in a supervised worker thread, or a subprocess per document with a restart.</td></tr>
+          <tr><td class="w"><b>ARM64 builds</b></td><td class="w">Snapdragon Windows laptops and ARM Linux boards are real now, and a 20 MB viewer is exactly what people install on them.</td><td class="w">A second CI target. Nearly free with pure Rust, painful with a C engine.</td></tr>
+          <tr><td class="w"><b>A stated “no” for printing</b></td><td class="w">Printing drags in a page-imposition model, a print dialog and platform print APIs. Saying no is defensible — saying nothing is not.</td><td class="w">One line in the README and one disabled menu item.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 12. YOUR REPOS ============ -->
+  <section id="s12">
+    <div class="snum"><i></i>12 — your own estate</div>
+    <h2>You have already built most of the shell</h2>
+    <p>I went through your repositories. This is not a courtesy note — <strong>CLDR is the same program
+      with a different payload</strong>, and several other repos supply the pieces this plan was
+      describing as work to be done. Reading your own code is the fastest route to the finished app.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Repo</th><th class="w">What is already in it</th><th class="w">What to lift for the viewer</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>CLDR</b><br><small>Rust · MIT + attribution</small></td>
+            <td class="w">A tray-resident binary that pops up on a keystroke: <code>daemon.rs</code>, <code>summon.rs</code> (global hotkey), <code>ipc.rs</code> (loopback-TCP single instance — no clipboard mailbox), <code>engine.rs</code>, plus <code>scripts/install-shortcut.ps1</code> and <code>install-shortcut.sh</code>. Release profile: fat LTO, one codegen unit, <code>panic = "abort"</code>, stripped → ~600 KB.</td>
+            <td class="w"><span class="pill p-gold">Reuse wholesale</span> The daemon + summon + IPC trio <em>is</em> your viewer's shell. Swap the TUI for a document surface and the shortcut installer scripts give you shell integration on day one. The release profile is the one to copy into the new workspace.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>ziptastic</b><br><small>C++ · CMake</small></td>
+            <td class="w">“The CHCE native engine — a single binary with the codecs embedded”, with a <code>vendor/</code> tree, a <code>plugins/</code> directory and a <code>PROJECT_OVERVIEW.md</code>.</td>
+            <td class="w">The single-binary-with-embedded-codecs philosophy, and the vendored-dependency layout SumatraPDF also uses. This is the answer to “how do I ship C code without a package manager”.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>offline-pdf-toolkit</b><br><small>single-file HTML</small></td>
+            <td class="w">PDF merge/split/rotate/watermark entirely in the browser, with a service worker, a <code>vendor/</code> tree and a proper <code>THIRD-PARTY-NOTICES.md</code>.</td>
+            <td class="w">Your PDF-domain knowledge in one place, and the notices discipline that an AGPL or BSD dependency will require. Also the honest fallback: a browser page that does what the desktop app does not.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>repertory-reader</b> · <b>kent-repertory-explorer</b> · <b>boericke-repertory</b> · <b>open-materia-medica</b> · <b>app-organon-reader</b></td>
+            <td class="w">Reading interfaces over very large structured texts — 271,421 rubrics, 74,480 entries — with search, no build step, offline.</td>
+            <td class="w">Your real test corpus. A 2 MB JSON of graded rubrics and a long repertory page are harder to scroll than most PDFs. Load these into the viewer on day three and let them set the performance budget.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>homoeopathic-materia-medica-repertory-json</b><br><small>Python</small></td>
+            <td class="w">13 books, ~108,000 rubrics, app-ready JSON, plus the <code>omm-json-builder</code> skill.</td>
+            <td class="w">The content that makes a viewer worth building for you specifically — and a second format worth supporting natively: your own JSON reader, which costs almost nothing on top of the text renderer.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>lumen</b><br><small>Dart / Flutter</small></td>
+            <td class="w">An offline photo library: indexing, a local database, caching, favourites.</td>
+            <td class="w">The recents/library model in §11, already designed — how to index a folder, cache thumbnails, and remember what was opened.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>app-builder</b> · <b>All4ONE</b> · <b>TTB</b></td>
+            <td class="w">Static web apps compiled into single-file portable Windows EXEs; 403 tools in one portable binary; 591 utilities in one extension.</td>
+            <td class="w">Your house rule, stated three ways: <em>one file, no installer, no runtime</em>. The viewer is the same promise with a harder payload.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>drsamonline.github.io</b> · <b>profile-kit</b> · <b>dashboard</b> · <b>skills</b> · <b>audit</b> · <b>backup</b></td>
+            <td class="w">A self-updating project index, theme-aware profile kit, live fleet status, an extracted-skills catalogue, a changelog with evidence, and pre-merge snapshots.</td>
+            <td class="w">The shipping apparatus. A new repo appears on your index automatically; the release workflow, landing page and support block already have a house style (see the <code>repo-presentation</code> skill) — build the viewer to it from the first commit, not after.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>The_Browser</b><br><small>C++ · Ladybird-derived</small></td>
+            <td class="w">An experimental browser engine with its own layout and rendering.</td>
+            <td class="w">Relevant only if you ever attempt a real EPUB/Office layout engine. It is the difference between reading about that problem and having started it.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">The thing this changes</div>
+      <p>Your estate is uniformly <strong>MIT-with-attribution, zero-dependency, offline-first, single
+        binary</strong>. MuPDF would be the first AGPL dependency in the fleet, and AGPL's source
+        obligations sit awkwardly next to a licence whose whole point is a retained attribution
+        watermark. That is the strongest argument in this document for the hayro path: pure Rust, Apache/MIT,
+        no C toolchain, cross-compiles to Windows ARM64 in one command — and it costs you a hand-written
+        EPUB reflow. If you do take MuPDF anyway, the obligation is concrete: the combined work becomes
+        AGPL, and every binary you publish must come with an offer of the complete corresponding source,
+        including your own modifications. Decide that trade deliberately in week one, not in month four.</p>
+    </div>
+  </section>
+
+  <!-- ============ 13. ROADMAP ============ -->
+  <section id="s13">
+    <div class="snum"><i></i>13 — roadmap</div>
+    <h2>Six milestones, each one shippable</h2>
+    <p>Estimates assume one experienced developer part-time. Every milestone ends with something you can
+      run, not a branch that half-compiles.</p>
+
+    <div class="road">
+      <div class="mile now">
+        <div class="h"><b>M0 · Spike</b><em>week 1</em><u>kill criteria</u></div>
+        <p>Window + one engine + one page of one PDF, timed. If first frame is over 500 ms or the binary
+          is over 30 MB, stop and rethink the stack before writing anything else. Build it on Windows,
+          Linux and ARM64 — cross-compilation pain shows up here or never. Run this spike twice: once
+          with hayro, once with MuPDF, and let the licence argument be settled by a real build rather
+          than by this document.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>M1 · PDF viewer</b><em>weeks 2–4</em><u>the core</u></div>
+        <p>Document trait, virtualised scroll, tile cache with cancellation, zoom ladder, keyboard
+          navigation, password prompt. Benchmark corpus + the §8 numbers in CI. This is the hardest
+          milestone and it is 60% of the value.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>M2 · Tabs, windows, pin</b><em>week 5</em><u>the shell</u></div>
+        <p>Tab strip, pinned tabs persisted to a small config, multi-window, drag-and-drop, single-instance
+          forwarding, session restore. Deliberately no toolbar.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>M3 · The other formats</b><em>weeks 6–8</em><u>breadth</u></div>
+        <p>Images and comics first (cheapest, highest delight), then EPUB, XPS, SVG, then plain text with
+          a small highlighter. Each one is a new implementation of the same trait — if any of them touches
+          the UI code, the abstraction is wrong.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>M4 · Platform integration</b><em>weeks 9–10</em><u>the part that bites</u></div>
+        <p>File associations, right-click verbs, global hotkey (with an honest fallback on Wayland), tray
+          icon, remember-and-restore. Most of this is already written: lift <code>daemon.rs</code>,
+          <code>summon.rs</code>, <code>ipc.rs</code> and the two <code>install-shortcut</code> scripts out
+          of CLDR (§12). Test on a clean VM for each OS — developer machines lie about what is registered.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>M5 · Package and ship</b><em>weeks 11–12</em><u>1.0</u></div>
+        <p>Portable zip, MSI, DMG (signed + notarised, or accept the Gatekeeper warning), AppImage + deb.
+          <code>cargo deny</code> in CI, a size budget check on every tag, and a README that states the
+          formats, the non-goals and the licence.</p>
+      </div>
+      <div class="mile">
+        <div class="h"><b>Post-1.0</b><em>only if asked for</em><u>discipline</u></div>
+        <p>In-document search, MOBI/AZW3, DjVu, CHM, HTML — plus the Office read mode and spreadsheet grid (§4) that ship as v1.1 alongside them. Each one
+          is opt-in and each one must not move the startup or size numbers. The moment a feature request starts with “could it also…”, the
+          answer is the app store of your choice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 14. VERDICT ============ -->
+  <section id="s14">
+    <div class="snum"><i></i>14 — the honest summary</div>
+    <h2>What you get, and what you do not</h2>
+
+    <div class="verdict">
+      <div class="vcard">
+        <div class="h">Genuinely achievable</div>
+        <ul>
+          <li>Under 20 MB, one binary, no runtime</li>
+          <li>PDF + images + comics + EPUB + XPS + SVG + text</li>
+          <li>Office and ODF files in a readable, honestly-labelled mode</li>
+          <li>Sub-300 ms launch, 60 fps on huge documents</li>
+          <li>Tabs, pinned tabs, multiple windows</li>
+          <li>Right-click open on all three desktops</li>
+          <li>Global hotkey on Windows, macOS, X11</li>
+          <li>A tray icon that stays out of the way</li>
+        </ul>
+      </div>
+      <div class="vcard mid">
+        <div class="h">Achievable, with a cost</div>
+        <ul>
+          <li>Wayland global hotkey — portal only, DE-dependent</li>
+          <li>Windows 11 first-level context menu — needs COM + MSIX identity</li>
+          <li>EPUB typography — MuPDF's reflow is correct but plain</li>
+          <li>macOS distribution — notarisation and $99/yr, or a warning</li>
+          <li>Search — a real feature, not a weekend</li>
+        </ul>
+      </div>
+      <div class="vcard no">
+        <div class="h">Not happening here</div>
+        <ul>
+          <li>Office documents in page-accurate layout</li>
+          <li>Office fidelity without a converter or the OS doing the drawing</li>
+          <li>DRM-locked books</li>
+          <li>PostScript / DVI without external converters</li>
+          <li>“Open the Explorer selection” as a true hotkey</li>
+          <li>Annotation, editing, printing pipelines</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">The one thing to decide today</div>
+      <p>Not “is it open source” — everything in your estate is. The question is whether this app may
+        carry the <strong>only AGPL dependency in the fleet</strong>. MuPDF buys you a dozen formats in one
+        binary and the fastest renderer, and costs you a licence that will not sit comfortably beside
+        MIT-with-attribution. hayro keeps the licence story clean and the build pure Rust, and costs you
+        PDF-only plus an EPUB path you write yourself. Both fit behind the same trait — decide with your
+        eyes open, not by accident.</p>
+    </div>
+  </section>
+
+  <!-- ============ 15. AUDIT ============ -->
+  <section id="s15">
+    <div class="snum"><i></i>15 — audit log</div>
+    <h2>What this document got wrong, and what changed</h2>
+    <p>A plan that has been revised three times accumulates contradictions faster than it accumulates
+      insight. This is the pass that went looking for them. Every row below was a real defect in the
+      previous version, not a stylistic preference.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Defect</th><th class="w">Why it mattered</th><th class="w">Fixed</th></tr></thead>
+        <tbody>
+          <tr><td class="w"><b>Recommended MuPDF to an MIT estate</b></td><td class="w">v1 and v2 called AGPL “fine, even elegant” without checking what the rest of your work is licensed under. That was advice shaped for a generic open-source project, not for yours.</td><td class="w">hayro added as the licence-clean path; §12 states the trade and the concrete AGPL obligations.</td></tr>
+          <tr><td class="w"><b>“Option A, revised in §9”</b></td><td class="w">A stale cross-reference left over from renumbering — §9 is the ecosystem map, not the licence decision. A reader following it would land nowhere useful.</td><td class="w">Points at §12.</td></tr>
+          <tr><td class="w"><b>“the §7 numbers” in M1</b></td><td class="w">The performance budget moved to §8 when the Office section was inserted. The roadmap still cited the old number.</td><td class="w">Points at §8.</td></tr>
+          <tr><td class="w"><b>“14 formats in v1.0”</b></td><td class="w">The KPI and requirement R4 both claimed 14, while the format matrix ships seven <em>families</em> in v1.0 and defers the rest. A number you cannot check is a number nobody trusts.</td><td class="w">Restated as seven families, about twenty extensions.</td></tr>
+          <tr><td class="w"><b>Office contradiction</b></td><td class="w">§4 shipped Office read mode in v1.1; the roadmap filed it under post-1.0; the summary said Office fidelity was “not happening” while §4 tiers T4 and T5 deliver exactly that.</td><td class="w">All three now say v1.1, and the summary distinguishes <em>fidelity without a converter</em>.</td></tr>
+          <tr><td class="w"><b>Warm vs cold start</b></td><td class="w">R3 asked for “≤300 ms warm”, the budget table asked for “≤300 ms cold”. Two different products.</td><td class="w">Cold ≤300 ms, warm ≤100 ms, stated once and consistently.</td></tr>
+          <tr><td class="w"><b>Unverified third-party numbers</b></td><td class="w">“nsxiv under 100 KB” came from a forum comment, not the project; “qpdfview ~15 MB RSS” from a blog review. Presented as fact, they invite a correction you cannot defend.</td><td class="w">Softened to “a fraction of a megabyte” and “reported around 15 MB”.</td></tr>
+          <tr><td class="w"><b>hayro attributed to “the resvg author”</b></td><td class="w">Accurate-ish but imprecise: the same person is one of several resvg maintainers.</td><td class="w">“a resvg maintainer”.</td></tr>
+          <tr><td class="w"><b>No licence mechanics</b></td><td class="w">The plan said “AGPL is a decision” without saying what the decision obliges you to do on release day.</td><td class="w">Source-offer requirement stated in §12.</td></tr>
+          <tr><td class="w"><b>Selection, shaping, accessibility missing</b></td><td class="w">Three requirements absent from v1 and v2 that decide whether the app is usable at all — especially for a Devanagari corpus and for screen-reader users.</td><td class="w">Added as R15–R17 and expanded in §11.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">Still unresolved, on purpose</div>
+      <p>Two things this document cannot settle for you. <strong>One:</strong> whether the EPUB reflow is
+        worth writing yourself — that is the hidden cost of the hayro path and it is measured in months,
+        not weeks. <strong>Two:</strong> whether “open the file currently selected in Explorer” is a
+        requirement or a nice-to-have; no desktop exposes it, so the honest substitute in §7 is what you
+        would actually ship. Both are decisions, not research gaps.</p>
+    </div>
+  </section>
+
+  <!-- ============ 16. LINKS ============ -->
+  <section id="s16">
+    <div class="snum"><i></i>16 — the links you sent</div>
+    <h2>Twenty links, triaged</h2>
+    <p>Most of what you sent is a different species of software: browser components and server-side
+      converters. That is not a criticism — it is the most useful finding in the batch, because it shows
+      exactly which territory is crowded and which is empty.</p>
+
+    <div class="tbox">
+      <div class="tscroll">
+      <table>
+        <thead><tr><th class="w">Link</th><th class="w">What it actually is</th><th class="w">Verdict</th><th class="w">The idea worth keeping</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="w"><b>thaapasa/peek</b><br><small>MIT · Rust · terminal</small></td>
+            <td class="w">A single-binary file viewer that previews PDF, DOCX, ODT, RTF, EPUB, CBZ, PPTX, ODP, XLSX, ODS, SQLite, fonts, X.509 certificates, ELF/PE/Mach-O, email, iCalendar, vCards, archives, .DS_Store — with a hex fallback.</td>
+            <td class="w"><span class="pill p-gold">Best find</span></td>
+            <td class="w">The scope model, and the licence fit: MIT, pure Rust, one binary, one file at a time. Two techniques to steal — rendering a PDF page as an image with a reconstructed-text overlay at matching zoom, and treating every non-document format as “parse, then draw a table”.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>flyfish-dev/file-viewer</b><br><small>Apache-2.0 · 1.3k ★ · web</small></td>
+            <td class="w">Browser-native Office/PDF/CAD/archive viewer: 206 extension mappings, 24 preview pipelines, no server conversion, heavy renderers lazy-loaded per format.</td>
+            <td class="w"><span class="pill p-gold">Steal the router</span></td>
+            <td class="w">Format count is a <em>routing</em> problem, not an engine problem: extension → pipeline registry, with the expensive pipelines loaded only when a file hits them. This is your §6 <code>DocumentRegistry</code>, productised.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>docmentis/udoc-viewer</b><br><small>MIT wrapper · Rust/WASM engine</small></td>
+            <td class="w">Client-side PDF/DOCX/PPTX/image viewer on a from-scratch Rust engine compiled to WebAssembly — explicitly not PDF.js. Repo has moved to a larger platform.</td>
+            <td class="w"><span class="pill p-info">Validation</span></td>
+            <td class="w">Someone is already building a Rust office+PDF rendering engine and shipping it. Confirms the thesis in §5, and confirms the difficulty: they wrapped it, then grew into a platform to fund it.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Okular</b><br><small>GPLv2+ · KDE</small></td>
+            <td class="w">“The Universal Document Viewer” — PDF, EPUB, DjVu, Markdown, images, CBZ/CBR — via a <em>Generator</em> plugin per format.</td>
+            <td class="w"><span class="pill p-gold">The mature design</span></td>
+            <td class="w">Your <code>Document</code> trait, twenty years older: one generator per format behind one interface, with selection, thumbnails and search implemented once. Why not just use it — KDE dependencies, no portable single binary, no tray, no summon. It is also the first software to carry the Blue Angel ecolabel for resource efficiency, which is the right thing to be measured against.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>UniversalViewer</b><br><small>MIT · IIIF + OpenSeadragon</small></td>
+            <td class="w">Web viewer for IIIF manifests: images, 3D, PDF, audio, video.</td>
+            <td class="w"><span class="pill p-mid">One idea</span></td>
+            <td class="w">The tile pyramid. A 20,000-pixel scan needs pre-computed levels, not one bitmap — the correct extension of §6's tile cache to oversized images.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>kkfileview</b><br><small>Java / Spring Boot</small></td>
+            <td class="w">Server that converts Office, PDF, media and archives to browser-viewable output.</td>
+            <td class="w"><span class="pill p-no">Anti-pattern</span></td>
+            <td class="w">Proves §4 tier T4 at scale — and shows the bill: a JVM service in the middle. Everything it does, a local viewer does without a server.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>ngx-universal-viewer</b><br><small>Angular</small></td>
+            <td class="w">Component wrapping PDF.js + Mammoth.js + SheetJS for PDF/Word/Excel/PowerPoint.</td>
+            <td class="w"><span class="pill p-info">Baseline</span></td>
+            <td class="w">That trio <em>is</em> the web definition of “universal viewer”. Useful as a feature checklist, useless as a base for something fast.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>mendixlabs/FileDocumentViewer</b><br><small>Apache-2.0 · Mendix widget</small></td>
+            <td class="w">Embeds a file document inside a form; falls back to PDF.js when the browser cannot render.</td>
+            <td class="w"><span class="pill p-mid">One sentence</span></td>
+            <td class="w">Its README is the argument for native: “Word or Excel are usually not viewable in the browser… the browser will download it.”</td>
+          </tr>
+          <tr>
+            <td class="w"><b>myworkside/UniversalFileEditorViewer</b><br><small>MIT · Android/Kotlin</small></td>
+            <td class="w">Viewer + editor + file manager + vault + storage analyser + APK analyser + wireless sharing.</td>
+            <td class="w"><span class="pill p-no">Scope trap</span></td>
+            <td class="w">This is the app your plan exists <em>not</em> to be. Useful only as a reminder of what a feature list looks like when nobody says no.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>Universal-File-Reader</b> · <b>Universal-File-Explorer</b><br><small>2016 and 2021 · both dead</small></td>
+            <td class="w">C# and Flutter attempts at a tabbed universal viewer; last commits 2017 and 2021.</td>
+            <td class="w"><span class="pill p-mid">Evidence, not code</span></td>
+            <td class="w">The tabbed universal viewer is a recurring idea that dies when it runs out of maintainers. Scope discipline is survival, not taste.</td>
+          </tr>
+          <tr>
+            <td class="w"><b>The topic pages</b><br><small>document-viewer, file-preview-viewer, react/angular-file-viewer, presentation-viewer, binary-viewer, kkfileview</small></td>
+            <td class="w">A census of the category, not a project.</td>
+            <td class="w"><span class="pill p-info">Market read</span></td>
+            <td class="w">Nearly every entry is a web component, a server, or a dead repo. The native, portable, summonable viewer is close to unoccupied.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">Who owns what — and the gap</div>
+      <p><strong>SumatraPDF</strong> owns Windows fixed-layout. <strong>Okular</strong> owns Linux
+        all-formats, at KDE's weight. <strong>QuickLook</strong> owns the Windows spacebar, at 100 MB.
+        <strong>Sushi</strong> and <strong>Maki</strong> own their own desktops' preview. <strong>peek</strong>
+        owns the terminal. <strong>Nobody</strong> owns <em>small, portable, cross-platform, summoned by a
+        keystroke, read-only</em>. That is not a crowded market with a hard incumbent — it is a category
+        with five regional champions and no one in the middle.</p>
+    </div>
+
+    <div class="callout">
+      <div class="tag">What this changed in the plan</div>
+      <p>Two edits, both from evidence rather than taste. <strong>One:</strong> §3 gained a “long tail”
+        row — fonts, certificates, SQLite, archives, email, calendars — because peek demonstrates each is
+        a weekend of parsing plus a table, and together they are what makes a viewer feel universal rather
+        than specialised. <strong>Two:</strong> §6 gained an explicit <em>router</em> in front of the
+        document trait, with lazy pipeline loading, because flyfish shows how one binary can honestly
+        claim 206 extensions without paying for them at startup. Neither change touches the size or
+        startup budgets in §8 — both are the kind of thing you add <em>because</em> the budgets held.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Feather · read-only document viewer · build plan v0.6</span>
+    <span>03 Nov 2026 · sources: project repos, MuPDF/PDFium docs, vendor benchmarks</span>
+  </footer>
+
+</div>
+</body>
+</html>

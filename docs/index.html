@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feather — a read-only document viewer that opens before you blink</title>
+<style>
+  :root{
+    --bg:#f4f5f1; --surface:#fff; --text:#132029; --dim:#5c6b74;
+    --ink:#1b4a5e; --brass:#9a6d1f; --border:rgba(20,40,55,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0c1418; --surface:#121d23; --text:#dde7eb; --dim:#8fa3ad;
+           --ink:#6fb6cd; --brass:#d6a75a; --border:rgba(200,225,235,.12); }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background-color:var(--bg); color:var(--text);
+    font:400 16px/1.6 'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+    display:flex; min-height:100vh; align-items:center; justify-content:center;
+    padding:32px;
+  }
+  main{max-width:680px}
+  .mark{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+  h1{font-weight:300;font-size:clamp(30px,5vw,44px);letter-spacing:-1.2px;line-height:1.1}
+  h1 b{font-weight:600;color:var(--ink)}
+  p{color:var(--dim);margin-top:16px;max-width:56ch}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
+  a.btn{
+    font:600 13px/1 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.04em;
+    text-decoration:none;color:var(--text);border:1px solid var(--border);
+    background:var(--surface);padding:11px 16px;border-radius:7px;
+  }
+  a.btn:hover{border-color:var(--brass);color:var(--brass)}
+  a.btn.primary{background:var(--brass);border-color:var(--brass);color:#fff}
+  footer{margin-top:40px;font:400 11px/1.6 'IBM Plex Mono',ui-monospace,monospace;color:var(--dim);letter-spacing:.06em}
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">
+    <img src="assets/feather.svg" alt="" width="56" height="56">
+    <span style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--brass)">Feather · M0</span>
+  </div>
+  <h1>A <b>read-only</b> document viewer<br>that opens before you blink</h1>
+  <p>Small, portable, cross-platform, summoned by a keystroke. No editing, no
+     annotation, no cloud, no plugins — one window, one document, nothing else.
+     Target: under 20 MB, under 300 ms, 60 fps on a thousand pages.</p>
+  <div class="row">
+    <a class="btn primary" href="https://github.com/drsamonline/feather">Source</a>
+    <a class="btn" href="plan.html">Read the plan</a>
+    <a class="btn" href="https://drsamonline.github.io/">All projects</a>
+  </div>
+  <footer>MIT · Dr. Sohil Momin · built offline-first, like everything else here</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build and test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format (advisory)
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (advisory)
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build release
+        run: cargo build --workspace --release
+
+      - name: Report binary size
+        shell: bash
+        run: |
+          bin="target/release/feather"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then bin="$bin.exe"; fi
+          size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
+          echo "### feather binary: $((size/1024)) KB on ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "binary size: $((size/1024)) KB"
+
+  budget:
+    name: dependency budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Count direct dependencies
+        run: |
+          # The plan sets a ceiling of 25 direct crates (docs/plan.html §8).
+          # This is a coarse guard, not a substitute for cargo-deny.
+          total=$(grep -rhoE '^[a-z0-9_-]+ = ' --include=Cargo.toml crates/ | wc -l)
+          echo "declared dependencies: $total"
+          echo "### declared dependencies: $total / 25" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$total" -gt 25 ]; then
+            echo "Over the §8 budget of 25 direct dependencies."
+            exit 1
+          fi
