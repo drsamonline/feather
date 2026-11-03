@@ -101,6 +101,20 @@ jobs:
             *"Contents"*) echo "::error::navigation leaked into the book"; exit 1 ;;
           esac
 
+          # Plain text and Markdown, through the same reflow engine as a book.
+          cargo run --release -p feather-cli -- info tests/fixtures/notes.md
+          cargo run --release -p feather-cli -- render tests/fixtures/notes.md 1 -o "$RUNNER_TEMP/notes.png"
+          check_png "$RUNNER_TEMP/notes.png"
+          note_text=$(cargo run --release -p feather-cli -- text tests/fixtures/notes.md)
+          case "$note_text" in
+            *"Feather notes"*) ;;
+            *) echo "::error::markdown heading did not reach the text layer"; exit 1 ;;
+          esac
+          case "$note_text" in
+            *"# Feather"*) echo "::error::markdown syntax leaked into the text"; exit 1 ;;
+          esac
+          cargo run --release -p feather-cli -- find tests/fixtures/notes.md zephyr >/dev/null
+
           # Search, headlessly: same text layers and same matcher as the bar.
           # The fixture says "chapter" three times: two headings and one in prose.
           # If that number changes, the fixture changed — the test should say so.

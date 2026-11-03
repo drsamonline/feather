@@ -54,11 +54,127 @@ struct Layout {
     pages: Vec<Vec<Line>>,
 }
 
-pub struct EpubDocument {
+/// Everything reflowable has in common: blocks in, paginated text out.
+///
+/// EPUB, plain text and Markdown differ only in how they produce blocks. The
+/// layout, the pagination, the rendering and the text layer are the same code,
+/// so they live here rather than three times over.
+pub struct Reflow {
     text: TextRenderer,
     blocks: Vec<Block>,
     layout: Mutex<Option<Layout>>,
     title: Option<String>,
+}
+
+impl Reflow {
+    pub fn new(blocks: Vec<Block>, title: Option<String>) -> Self {
+        Reflow {
+            text: TextRenderer::load(),
+            blocks,
+            layout: Mutex::new(None),
+            title,
+        }
+    }
+
+    fn with_layout<T>(&self, f: impl FnOnce(&Layout) -> T) -> T {
+        let mut guard = self
+            .layout
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.is_none() {
+            *guard = Some(lay_out(&self.text, &self.blocks));
+        }
+        match guard.as_ref() {
+            Some(layout) => f(layout),
+            None => f(&Layout { pages: Vec::new() }),
+        }
+    }
+
+    pub fn page_count(&self) -> usize {
+        self.with_layout(|layout| layout.pages.len())
+    }
+
+    pub fn page_size(&self) -> PageSize {
+        PageSize {
+            width: PAGE_W,
+            height: PAGE_H,
+        }
+    }
+
+    pub fn title(&self) -> Option<String> {
+        self.title.clone()
+    }
+
+    pub fn text_layer(&self, page: usize) -> Option<TextLayer> {
+        self.with_layout(|layout| {
+            layout.pages.get(page).map(|lines| TextLayer {
+                words: lines
+                    .iter()
+                    .flat_map(|line| line.words.iter().cloned())
+                    .collect(),
+            })
+        })
+    }
+
+    pub fn render(&self, page: usize, scale: f32) -> Result<RenderedPage, DocumentError> {
+        let scale = if scale > 0.0 { scale } else { 1.0 };
+        let count = self.page_count();
+        if page >= count {
+            return Err(DocumentError::OutOfRange { page, count });
+        }
+
+        let width = (PAGE_W * scale).round().max(1.0) as u32;
+        let height = (PAGE_H * scale).round().max(1.0) as u32;
+
+        // Paper, not transparency: a book page has a colour, and the window
+        // composites over its own background.
+        let mut canvas = vec![0x00FF_FFFFu32; (width as usize) * (height as usize)];
+
+        self.with_layout(|layout| {
+            let Some(lines) = layout.pages.get(page) else {
+                return;
+            };
+            for line in lines {
+                let px = line.px * scale;
+                let x = line.x * scale;
+                let y = line.y * scale;
+                let clip = (0, 0, width as i32, height as i32);
+                if line.bold {
+                    self.text
+                        .draw_bold(&mut canvas, width, height, x, y, &line.text, px, INK, clip);
+                } else {
+                    self.text
+                        .draw(&mut canvas, width, height, x, y, &line.text, px, INK, clip);
+                }
+            }
+        });
+
+        let mut rgba = Vec::with_capacity(canvas.len() * 4);
+        for pixel in canvas {
+            rgba.push((pixel >> 16) as u8);
+            rgba.push((pixel >> 8) as u8);
+            rgba.push(pixel as u8);
+            rgba.push(255);
+        }
+
+        let image = image::RgbaImage::from_raw(width, height, rgba)
+            .ok_or_else(|| DocumentError::Decode("page bitmap has the wrong size".into()))?;
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .map_err(|e| DocumentError::Decode(e.to_string()))?;
+
+        Ok(RenderedPage {
+            width,
+            height,
+            scale,
+            png,
+        })
+    }
+}
+
+pub struct EpubDocument {
+    reflow: Reflow,
 }
 
 impl EpubDocument {
@@ -89,8 +205,6 @@ impl EpubDocument {
             Some(package) if !package.documents.is_empty() => {
                 (package.documents, package.title)
             }
-            // A malformed package document should not make the book unreadable:
-            // fall back to every XHTML file in natural order.
             _ => (fallback_documents(&mut archive), None),
         };
 
@@ -113,128 +227,128 @@ impl EpubDocument {
         }
 
         Ok(EpubDocument {
-            text: TextRenderer::load(),
-            blocks,
-            layout: Mutex::new(None),
-            title,
+            reflow: Reflow::new(blocks, title),
         })
-    }
-
-    fn with_layout<T>(&self, f: impl FnOnce(&Layout) -> T) -> T {
-        let mut guard = self
-            .layout
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if guard.is_none() {
-            *guard = Some(lay_out(&self.text, &self.blocks));
-        }
-        match guard.as_ref() {
-            Some(layout) => f(layout),
-            // Unreachable: the branch above always fills it.
-            None => f(&Layout { pages: Vec::new() }),
-        }
     }
 }
 
 impl Document for EpubDocument {
     fn page_count(&self) -> usize {
-        self.with_layout(|layout| layout.pages.len())
+        self.reflow.page_count()
     }
 
     fn page_size(&self, _page: usize) -> Option<PageSize> {
-        Some(PageSize {
-            width: PAGE_W,
-            height: PAGE_H,
-        })
+        Some(self.reflow.page_size())
     }
 
     fn render(&self, page: usize, scale: f32) -> Result<RenderedPage, DocumentError> {
-        let scale = if scale > 0.0 { scale } else { 1.0 };
-        let count = self.page_count();
-        if page >= count {
-            return Err(DocumentError::OutOfRange { page, count });
-        }
-
-        let width = (PAGE_W * scale).round().max(1.0) as u32;
-        let height = (PAGE_H * scale).round().max(1.0) as u32;
-
-        // Paper, not transparency: a book page has a colour, and the window
-        // composites over its own background.
-        let mut canvas = vec![0x00FF_FFFFu32; (width as usize) * (height as usize)];
-
-        self.with_layout(|layout| {
-            let Some(lines) = layout.pages.get(page) else {
-                return;
-            };
-            for line in lines {
-                let px = line.px * scale;
-                let x = line.x * scale;
-                let y = line.y * scale;
-                if line.bold {
-                    self.text.draw_bold(
-                        &mut canvas,
-                        width,
-                        height,
-                        x,
-                        y,
-                        &line.text,
-                        px,
-                        INK,
-                        (0, 0, width as i32, height as i32),
-                    );
-                } else {
-                    self.text.draw(
-                        &mut canvas,
-                        width,
-                        height,
-                        x,
-                        y,
-                        &line.text,
-                        px,
-                        INK,
-                        (0, 0, width as i32, height as i32),
-                    );
-                }
-            }
-        });
-
-        let mut rgba = Vec::with_capacity(canvas.len() * 4);
-        for pixel in canvas {
-            rgba.push((pixel >> 16) as u8);
-            rgba.push((pixel >> 8) as u8);
-            rgba.push(pixel as u8);
-            rgba.push(255);
-        }
-
-        let image = image::RgbaImage::from_raw(width, height, rgba)
-            .ok_or_else(|| DocumentError::Decode("page bitmap has the wrong size".into()))?;
-        let mut png = Vec::new();
-        image::DynamicImage::ImageRgba8(image)
-            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
-            .map_err(|e| DocumentError::Decode(e.to_string()))?;
-
-        Ok(RenderedPage {
-            width,
-            height,
-            scale,
-            png,
-        })
+        self.reflow.render(page, scale)
     }
 
     fn title(&self) -> Option<String> {
-        self.title.clone()
+        self.reflow.title()
     }
 
     fn text_layer(&self, page: usize) -> Option<TextLayer> {
-        self.with_layout(|layout| {
-            layout.pages.get(page).map(|lines| TextLayer {
-                words: lines
-                    .iter()
-                    .flat_map(|line| line.words.iter().cloned())
-                    .collect(),
-            })
+        self.reflow.text_layer(page)
+    }
+}
+
+/// Plain text and Markdown, through the same engine that reflows a book.
+///
+/// Markdown gets the lightest possible treatment: `#` lines become headings,
+/// blank lines separate paragraphs, and everything else is text. That is enough
+/// to read a README in the viewer, which is the point — and it costs one file
+/// rather than a second layout engine.
+pub struct TextDocument {
+    reflow: Reflow,
+}
+
+impl TextDocument {
+    pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, DocumentError> {
+        let bytes = std::fs::read(path.as_ref())?;
+        Self::from_bytes(bytes)
+    }
+
+    pub fn from_bytes(data: Vec<u8>) -> Result<Self, DocumentError> {
+        let text = String::from_utf8_lossy(&data).to_string();
+        let blocks = blocks_from_text(&text);
+
+        if blocks.is_empty() {
+            return Err(DocumentError::Decode("file is empty".to_string()));
+        }
+        Ok(TextDocument {
+            reflow: Reflow::new(blocks, None),
         })
     }
+}
+
+impl Document for TextDocument {
+    fn page_count(&self) -> usize {
+        self.reflow.page_count()
+    }
+
+    fn page_size(&self, _page: usize) -> Option<PageSize> {
+        Some(self.reflow.page_size())
+    }
+
+    fn render(&self, page: usize, scale: f32) -> Result<RenderedPage, DocumentError> {
+        self.reflow.render(page, scale)
+    }
+
+    fn title(&self) -> Option<String> {
+        self.reflow.title()
+    }
+
+    fn text_layer(&self, page: usize) -> Option<TextLayer> {
+        self.reflow.text_layer(page)
+    }
+}
+
+/// Split plain text into paragraphs, honouring Markdown headings.
+fn blocks_from_text(text: &str) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut paragraph = String::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+
+        if let Some((level, heading)) = markdown_heading(trimmed) {
+            flush(&mut blocks, &mut paragraph, Kind::Paragraph);
+            if !heading.is_empty() {
+                blocks.push(Block {
+                    kind: Kind::Heading(level),
+                    text: heading,
+                });
+            }
+            continue;
+        }
+
+        if trimmed.is_empty() {
+            flush(&mut blocks, &mut paragraph, Kind::Paragraph);
+            continue;
+        }
+
+        if !paragraph.is_empty() {
+            paragraph.push(' ');
+        }
+        paragraph.push_str(trimmed);
+    }
+
+    flush(&mut blocks, &mut paragraph, Kind::Paragraph);
+    blocks
+}
+
+fn markdown_heading(line: &str) -> Option<(u8, String)> {
+    let hashes = line.chars().take_while(|c| *c == '#').count();
+    if hashes == 0 || hashes > 6 {
+        return None;
+    }
+    let rest = &line[hashes..];
+    if !rest.starts_with(' ') {
+        return None;
+    }
+    Some((hashes as u8, rest.trim().to_string()))
 }
 
 /// Split a laid-out line into words with positions, so a click can land on one.
