@@ -223,34 +223,34 @@ impl Snapshot {
     /// by hand, should cost you a restored tab — not a failure to start.
     pub fn decode(text: &str) -> Snapshot {
         let mut snapshot = Snapshot::default();
+
         for line in text.lines() {
-            let mut parts = line.split('\t');
-            match parts.next() {
-                Some("active") => {
-                    if let Some(n) = line.split_whitespace().nth(1) {
-                        snapshot.active = n.parse().unwrap_or(0);
-                    }
-                }
-                Some("tab") => {
-                    let pinned = parts.next().unwrap_or("0") == "1";
-                    let page = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
-                    let zoom = parts.next().and_then(|n| n.parse().ok()).unwrap_or(1.0);
-                    let scroll = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0.0);
-                    let path = parts.next().map(unescape).unwrap_or_default();
-                    if path.is_empty() {
-                        continue;
-                    }
-                    snapshot.tabs.push(SnapshotTab {
-                        path,
-                        pinned,
-                        page,
-                        zoom: if zoom > 0.0 { zoom } else { 1.0 },
-                        scroll,
-                    });
-                }
-                _ => {}
+            if let Some(rest) = line.strip_prefix("active ") {
+                snapshot.active = rest.trim().parse().unwrap_or(0);
+                continue;
             }
+
+            let Some(rest) = line.strip_prefix("tab\t") else {
+                continue;
+            };
+            let mut fields = rest.split('\t');
+            let pinned = fields.next().unwrap_or("0") == "1";
+            let page = fields.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+            let zoom = fields.next().and_then(|n| n.parse().ok()).unwrap_or(1.0);
+            let scroll = fields.next().and_then(|n| n.parse().ok()).unwrap_or(0.0);
+            let path = fields.next().map(unescape).unwrap_or_default();
+            if path.is_empty() {
+                continue;
+            }
+            snapshot.tabs.push(SnapshotTab {
+                path,
+                pinned,
+                page,
+                zoom: if zoom > 0.0 { zoom } else { 1.0 },
+                scroll,
+            });
         }
+
         if snapshot.active >= snapshot.tabs.len() {
             snapshot.active = 0;
         }
