@@ -56,6 +56,9 @@ const TAB_TEXT: u32 = 0x00C8_D4DA;
 const TAB_TEXT_ACTIVE: u32 = 0x00F2_F6F8;
 const UI_PX: f32 = 13.0;
 const SELECTION: u32 = 0x0040_7FBF;
+const MUTED: u32 = 0x0082_8F98;
+const ERROR: u32 = 0x00E0_8070;
+const TITLE_INK: u32 = 0x00E8_EFF3;
 
 // ---------------------------------------------------------------- the worker
 
@@ -316,6 +319,9 @@ struct App {
     layers: HashMap<(u32, usize), TextLayer>,
     selection: Option<Selection>,
     dragging: bool,
+    /// The last thing that went wrong, shown in the window rather than on a
+    /// stderr nobody sees when the app is launched from a desktop launcher.
+    status: Option<String>,
     renderer: Renderer,
     generation: u64,
     /// The content area: the window minus the tab strip.
@@ -342,6 +348,7 @@ impl App {
             layers: HashMap::new(),
             selection: None,
             dragging: false,
+            status: None,
             renderer,
             generation: 0,
             viewport: (900.0, 1100.0 - STRIP_H),
@@ -405,6 +412,7 @@ impl App {
 
         match load(&path) {
             Ok((doc, count, placeholder)) => {
+                self.status = None;
                 self.renderer.add(id, doc);
                 let mut layout = Layout::new();
                 layout.set_viewport(self.viewport.0, self.viewport.1);
@@ -417,6 +425,7 @@ impl App {
             }
             Err(e) => {
                 eprintln!("feather: {}: {e}", path.display());
+                self.status = Some(format!("{} — {e}", path.display()));
                 self.session.close_forced(index);
             }
         }
@@ -737,7 +746,9 @@ impl App {
                 *px = BG;
             }
 
-            if let (Some(doc), Some((_, (first, last)))) = (doc, visible) {
+            if self.session.is_empty() || self.status.is_some() {
+                draw_panel(&self.text, buf, w, h, self.status.as_deref());
+            } else if let (Some(doc), Some((_, (first, last)))) = (doc, visible) {
                 for page in first..=last {
                     let Some(view) = self.views.get(&doc) else { break };
                     let size = view.layout.page_size(page).unwrap_or(PageSize::A4);
@@ -1075,6 +1086,66 @@ fn fill_rect_alpha(
             let db = dst & 0xff;
             buf[row + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
         }
+    }
+}
+
+/// The empty state, and the failure state.
+///
+/// A viewer launched from a desktop icon has no console, so an error printed to
+/// stderr is an error nobody sees — the window would just be blank. Everything
+/// that goes wrong on open lands here instead.
+fn draw_panel(text: &TextRenderer, buf: &mut [u32], w: u32, h: u32, status: Option<&str>) {
+    let clip = (0, 0, w as i32, h as i32);
+    let centre = h as f32 / 2.0;
+
+    let (title, detail, colour) = match status {
+        Some(message) => ("Could not open that document", message, ERROR),
+        None => (
+            "Nothing open",
+            "Pass a file: feather-viewer file.pdf — or drop one on the window once drag and drop lands.",
+            MUTED,
+        ),
+    };
+
+    let title_px = 22.0;
+    let detail_px = 13.0;
+    let max_width = (w as f32 - 96.0).max(120.0);
+
+    let title_line = text.elide(title, title_px, max_width);
+    let detail_line = text.elide(detail, detail_px, max_width);
+
+    let title_x = ((w as f32) - text.measure(&title_line, title_px)) / 2.0;
+    let detail_x = ((w as f32) - text.measure(&detail_line, detail_px)) / 2.0;
+
+    text.draw(
+        buf,
+        w,
+        h,
+        title_x.max(16.0),
+        centre - 12.0,
+        &title_line,
+        title_px,
+        TITLE_INK,
+        clip,
+    );
+    text.draw(
+        buf,
+        w,
+        h,
+        detail_x.max(16.0),
+        centre + 18.0,
+        &detail_line,
+        detail_px,
+        colour,
+        clip,
+    );
+
+    // A quiet hint that the shortcut exists, when there is nothing else to say.
+    if status.is_none() {
+        let hint = "Ctrl+Alt+F summons this window";
+        let px = 11.0;
+        let x = ((w as f32) - text.measure(hint, px)) / 2.0;
+        text.draw(buf, w, h, x.max(16.0), centre + 48.0, hint, px, MUTED, clip);
     }
 }
 

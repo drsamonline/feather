@@ -1,57 +1,139 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Feather — a read-only document viewer that opens before you blink</title>
+<meta name="description" content="Small, portable, cross-platform, read-only. PDF, EPUB, comics and images in one window, summoned by a keystroke.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f4f5f1; --surface:#fff; --text:#132029; --dim:#5c6b74;
-    --ink:#1b4a5e; --brass:#9a6d1f; --border:rgba(20,40,55,.12);
+    --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
+    --muted:#8a99a4; --accent:#4fa8c7; --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
+    --mono:"IBM Plex Mono",ui-monospace,monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
   }
-  @media (prefers-color-scheme: dark){
-    :root{ --bg:#0c1418; --surface:#121d23; --text:#dde7eb; --dim:#8fa3ad;
-           --ink:#6fb6cd; --brass:#d6a75a; --border:rgba(200,225,235,.12); }
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    background-color:var(--bg); color:var(--text);
-    font:400 16px/1.6 'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
-    display:flex; min-height:100vh; align-items:center; justify-content:center;
-    padding:32px;
-  }
-  main{max-width:680px}
-  .mark{display:flex;align-items:center;gap:14px;margin-bottom:26px}
-  h1{font-weight:300;font-size:clamp(30px,5vw,44px);letter-spacing:-1.2px;line-height:1.1}
-  h1 b{font-weight:600;color:var(--ink)}
-  p{color:var(--dim);margin-top:16px;max-width:56ch}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
-  a.btn{
-    font:600 13px/1 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.04em;
-    text-decoration:none;color:var(--text);border:1px solid var(--border);
-    background:var(--surface);padding:11px 16px;border-radius:7px;
-  }
-  a.btn:hover{border-color:var(--brass);color:var(--brass)}
-  a.btn.primary{background:var(--brass);border-color:var(--brass);color:#fff}
-  footer{margin-top:40px;font:400 11px/1.6 'IBM Plex Mono',ui-monospace,monospace;color:var(--dim);letter-spacing:.06em}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px;margin:0 auto;padding:0 28px}
+  header{padding:88px 0 40px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:20px}
+  h1{font-size:clamp(30px,5vw,52px);line-height:1.1;font-weight:500;letter-spacing:-.02em;margin:0 0 22px}
+  .lede{font-size:clamp(16px,2vw,19px);color:var(--muted);max-width:44ch;font-weight:300}
+  .lede strong{color:var(--ink);font-weight:500}
+  section{padding:52px 0;border-bottom:1px solid var(--line)}
+  h2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin:0 0 24px;font-weight:500}
+  p{margin:0 0 16px;max-width:68ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .cell{background:var(--surface);padding:20px 22px}
+  .cell .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .cell .v{font-size:15px;font-weight:500}
+  .cell .v small{display:block;font-weight:400;color:var(--muted);font-size:12.5px;margin-top:4px;line-height:1.5}
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 14px 10px 0;font-weight:500}
+  td{padding:9px 14px 9px 0;border-top:1px solid var(--line);vertical-align:top}
+  td:first-child{white-space:nowrap}
+  code,kbd{font-family:var(--mono);font-size:.88em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+  .yes{color:var(--green)} .later{color:var(--muted)} .no{color:var(--red)}
+  pre{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.7}
+  pre code{background:none;border:0;padding:0}
+  .links{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
+  .btn{display:inline-block;font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;text-decoration:none;color:var(--ink);border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:11px 18px;transition:border-color .15s,color .15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{border-color:var(--accent);color:var(--accent)}
+  footer{padding:44px 0 72px;color:var(--muted);font-size:13px}
+  footer a{color:var(--muted)}
+  .note{border-left:2px solid var(--brass);padding-left:16px;color:var(--muted);font-size:14.5px;max-width:64ch}
 </style>
 </head>
 <body>
-<main>
-  <div class="mark">
-    <img src="assets/feather.svg" alt="" width="56" height="56">
-    <span style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--brass)">Feather · M0</span>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Read-only · single binary · no runtime</div>
+    <h1>A document viewer that opens before you blink.</h1>
+    <p class="lede">Small, portable, cross-platform, <strong>summoned by a keystroke</strong>. No editing, no annotation, no cloud, no plugins — one window, one document, nothing else.</p>
+    <div class="links" style="margin-top:28px">
+      <a class="btn primary" href="https://github.com/drsamonline/feather">Repository</a>
+      <a class="btn" href="plan.html">The build plan</a>
+      <a class="btn" href="https://github.com/drsamonline/feather#readme">Install</a>
+    </div>
   </div>
-  <h1>A <b>read-only</b> document viewer<br>that opens before you blink</h1>
-  <p>Small, portable, cross-platform, summoned by a keystroke. No editing, no
-     annotation, no cloud, no plugins — one window, one document, nothing else.
-     Target: under 20 MB, under 300 ms, 60 fps on a thousand pages.</p>
-  <div class="row">
-    <a class="btn primary" href="https://github.com/drsamonline/feather">Source</a>
-    <a class="btn" href="plan.html">Read the plan</a>
-    <a class="btn" href="https://drsamonline.github.io/">All projects</a>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>Where it stands</h2>
+    <div class="grid">
+      <div class="cell"><div class="k">Binary</div><div class="v">~6.6 MB<small>One file. No runtime, no service, no shared libraries.</small></div></div>
+      <div class="cell"><div class="k">Dependencies</div><div class="v">9 crates<small>Against a ceiling of 25 in the plan. Budget-checked on every push.</small></div></div>
+      <div class="cell"><div class="k">Page render</div><div class="v">~8 ms<small>One A4 page at 2×, measured in CI on every commit.</small></div></div>
+      <div class="cell"><div class="k">Platforms</div><div class="v">Linux · Windows · macOS<small>Built and tested on all three. Packaged on two.</small></div></div>
+    </div>
   </div>
-  <footer>MIT · Dr. Sohil Momin · built offline-first, like everything else here</footer>
-</main>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What it opens</h2>
+    <table>
+      <thead><tr><th>Format</th><th>Engine</th><th>State</th></tr></thead>
+      <tbody>
+        <tr><td><code>pdf</code></td><td>hayro — pure Rust, Apache/MIT</td><td class="yes">Rendering, tiled, zoomable</td></tr>
+        <tr><td><code>epub</code></td><td>own reflow engine, spine-ordered</td><td class="yes">Rendering, selectable</td></tr>
+        <tr><td><code>cbz</code> <code>cbr</code></td><td>zip + image decoders, natural page order</td><td class="yes">Rendering</td></tr>
+        <tr><td>images</td><td><code>png</code> <code>jpeg</code> <code>gif</code> <code>webp</code> <code>bmp</code> <code>tiff</code></td><td class="yes">Rendering</td></tr>
+        <tr><td>Office / ODF</td><td>—</td><td class="later">Not claimed, not advertised</td></tr>
+      </tbody>
+    </table>
+    <p class="note" style="margin-top:22px">Text selection works where a pipeline can say where the words are — EPUB today. PDF hands back a page image, so it stays honestly unselectable until text extraction lands.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Keys</h2>
+    <table>
+      <tbody>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>scroll</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>Home</kbd> <kbd>End</kbd></td><td>page</td></tr>
+        <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>1</kbd></td><td>zoom in, out, fit width</td></tr>
+        <tr><td><kbd>]</kbd> <kbd>[</kbd> · click</td><td>next / previous tab</td></tr>
+        <tr><td><kbd>p</kbd> · <kbd>w</kbd></td><td>pin a tab · close a tab</td></tr>
+        <tr><td>drag · <kbd>c</kbd></td><td>select text · copy</td></tr>
+        <tr><td><kbd>n</kbd></td><td>open this document in a window of its own</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></td><td>summon the window from anywhere</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Register with the desktop</h2>
+<pre><code># Linux — a launcher and a MIME candidate
+packaging/linux/install.sh
+
+# Windows — HKCU only, no admin rights, no installer
+powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1</code></pre>
+    <p class="note">Both register Feather as a <em>candidate</em> for the formats it can open, and neither seizes the default. Choosing that is your job, in your own settings, where you can also undo it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Not in it</h2>
+    <p>Editing, annotation, printing, cloud, plugins, telemetry, an updater, a settings window, Office documents, a tray icon (it needs GTK on Linux — the right answer is a D-Bus status item, which is its own piece of work).</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>MIT · © 2026 Dr Sohil Momin · <a href="https://github.com/drsamonline/feather">github.com/drsamonline/feather</a> · <a href="plan.html">the plan</a></p>
+    <p style="color:#5f6b73;font-size:12px">This page is served from <code>docs/</code> in the repository.</p>
+  </div>
+</footer>
+
 </body>
 </html>
