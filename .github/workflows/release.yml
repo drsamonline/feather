@@ -50,8 +50,11 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      # No --locked: this repository has no Cargo.lock yet, because no cargo has
+      # ever run in the environment it was written in. The moment a build
+      # generates one, commit it and add --locked back.
       - name: Build
-        run: cargo build --release --locked -p feather-app --target ${{ matrix.target }}
+        run: cargo build --release -p feather-app --target ${{ matrix.target }}
 
       - name: Package
         shell: bash

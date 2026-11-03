@@ -3,4 +3,5 @@
 Cargo.lock.orig
 *.png
 !docs/**/*.png
+!tests/fixtures/*.png
 .DS_Store
