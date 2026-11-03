@@ -213,30 +213,7 @@ impl Renderer {
                             };
                             let (width, height) = decoded.dimensions();
                             let rgba = decoded.into_raw();
-                            let grid = TileGrid::new(width, height, TILE_PX);
-                            let mut tiles = Vec::with_capacity(grid.len() as usize);
-                            for row in 0..grid.rows {
-                                for col in 0..grid.cols {
-                                    let Some((sx, sy, tw, th)) = grid.tile_rect(col, row) else {
-                                        continue;
-                                    };
-                                    let mut buf = Vec::with_capacity((tw * th * 4) as usize);
-                                    for line in 0..th {
-                                        let start = (((sy + line) * width + sx) * 4) as usize;
-                                        let end = start + (tw * 4) as usize;
-                                        if end <= rgba.len() {
-                                            buf.extend_from_slice(&rgba[start..end]);
-                                        }
-                                    }
-                                    tiles.push(TileData {
-                                        col,
-                                        row,
-                                        width: tw,
-                                        height: th,
-                                        rgba: buf,
-                                    });
-                                }
-                            }
+                            let tiles = slice_tiles(&rgba, width, height);
                             let words = doc
                                 .text_layer(job.page)
                                 .map(|layer| layer.words)
@@ -268,6 +245,18 @@ impl Renderer {
             commands: cmd_tx,
             results: res_rx,
             generation,
+        }
+    }
+
+    /// A renderer with no thread behind it. Used by the screenshot path, where
+    /// the frame is rendered synchronously and nothing needs a worker.
+    fn detached() -> Self {
+        let (commands, _jobs) = mpsc::channel();
+        let (_replies, results) = mpsc::channel();
+        Renderer {
+            commands,
+            results,
+            generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -372,6 +361,35 @@ fn start_listener(proxy: EventLoopProxy<UserEvent>) {
         .ok();
 }
 
+
+/// Cut a full-page raster into the tiles the cache stores.
+fn slice_tiles(rgba: &[u8], width: u32, height: u32) -> Vec<TileData> {
+    let grid = TileGrid::new(width, height, TILE_PX);
+    let mut tiles = Vec::with_capacity(grid.len() as usize);
+    for row in 0..grid.rows {
+        for col in 0..grid.cols {
+            let Some((sx, sy, tw, th)) = grid.tile_rect(col, row) else {
+                continue;
+            };
+            let mut buf = Vec::with_capacity((tw * th * 4) as usize);
+            for line in 0..th {
+                let start = (((sy + line) * width + sx) * 4) as usize;
+                let end = start + (tw * 4) as usize;
+                if end <= rgba.len() {
+                    buf.extend_from_slice(&rgba[start..end]);
+                }
+            }
+            tiles.push(TileData {
+                col,
+                row,
+                width: tw,
+                height: th,
+                rgba: buf,
+            });
+        }
+    }
+    tiles
+}
 
 // ------------------------------------------------------------------- the view
 
@@ -908,8 +926,40 @@ impl App {
         self.pump();
         self.request_visible();
 
-        // Everything that needs `&self` is resolved before the surface is
-        // mutably borrowed; after that only individual fields are touched.
+        let (ww, wh) = self.window_size;
+        // The surface is taken out of `self` for the duration of the frame so
+        // that building it can borrow the rest of the application. Putting it
+        // back is the last thing this function does, on every path out.
+        let Some(mut surface) = self.surface.take() else {
+            return;
+        };
+        let (w, h) = (ww.max(1.0) as u32, wh.max(1.0) as u32);
+        let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
+            self.surface = Some(surface);
+            return;
+        };
+        if surface.resize(nw, nh).is_err() {
+            self.surface = Some(surface);
+            return;
+        }
+        let Ok(mut buffer) = surface.buffer_mut() else {
+            self.surface = Some(surface);
+            return;
+        };
+
+        {
+            let buf: &mut [u32] = &mut buffer;
+            self.render_frame(buf, w, h);
+        }
+
+        let _ = buffer.present();
+        self.surface = Some(surface);
+    }
+
+    /// Everything that ends up on screen, in one place — so a window and a
+    /// screenshot of a window cannot drift apart.
+    fn render_frame(&mut self, buf: &mut [u32], w: u32, h: u32) {
+        let (vw, vh) = self.viewport;
         let doc = self.active_id();
         let zoom = doc
             .and_then(|d| self.views.get(&d).map(|v| v.layout.zoom()))
@@ -919,25 +969,7 @@ impl App {
                 .get(&d)
                 .map(|v| (d, v.layout.visible_range()))
         });
-
-        let (vw, vh) = self.viewport;
-        let (ww, wh) = self.window_size;
-        let Some(surface) = self.surface.as_mut() else {
-            return;
-        };
-        let (w, h) = (ww.max(1.0) as u32, wh.max(1.0) as u32);
-        let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
-            return;
-        };
-        if surface.resize(nw, nh).is_err() {
-            return;
-        }
-        let Ok(mut buffer) = surface.buffer_mut() else {
-            return;
-        };
-
         {
-            let buf: &mut [u32] = &mut buffer;
             for px in buf.iter_mut() {
                 *px = BG;
             }
@@ -1044,8 +1076,6 @@ impl App {
                 .map(|search| (search.query.as_str(), search.current, search.hits.len()));
             draw_strip(&self.session, &self.text, buf, w, h, search_bar);
         }
-
-        let _ = buffer.present();
     }
 
     fn go_to_page(&mut self, page: usize) {
@@ -1742,12 +1772,93 @@ impl ApplicationHandler<UserEvent> for App {
     }
 }
 
+/// Render the real interface into a PNG, with no window and no display.
+///
+/// This exists because a viewer nobody has looked at is a viewer nobody can
+/// trust: every visual decision in this file was made without seeing the
+/// result. The frame comes from the same `render_frame` the window uses, so a
+/// screenshot cannot drift from what a reader sees.
+fn screenshot(path: &str, out: &str) -> Result<(), String> {
+    let (doc, count, placeholder) = load(&PathBuf::from(path))?;
+
+    let (w, h) = (1000.0_f32, 1200.0_f32);
+    let mut app = App::new(Renderer::detached());
+    app.window_size = (w, h);
+    app.viewport = (w, (h - STRIP_H).max(1.0));
+
+    let title = PathBuf::from(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+    let (id, _index, _is_new) = app.session.open(PathBuf::from(path), title);
+
+    let mut layout = Layout::new();
+    layout.set_viewport(app.viewport.0, app.viewport.1);
+    layout.set_page_count(count, placeholder);
+    let zoom = layout.fit_width_zoom(0);
+    layout.set_zoom(zoom);
+    app.views.insert(id, View { layout, page: 0 });
+
+    // Render the first page the way the frame will ask for it.
+    let size = app
+        .views
+        .get(&id)
+        .and_then(|view| view.layout.page_size(0))
+        .unwrap_or(placeholder);
+    let level = level_capped(zoom, size, MAX_RASTER_PIXELS);
+    let rendered = doc.render(0, scale_for_level(level)).map_err(|e| e.to_string())?;
+    let decoded = image::load_from_memory(&rendered.png)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+    let (page_w, page_h) = decoded.dimensions();
+    app.dims.insert((id, 0, level), (page_w, page_h));
+    for tile in slice_tiles(&decoded.into_raw(), page_w, page_h) {
+        let key = TileKey {
+            doc: id,
+            page: 0,
+            level,
+            x: tile.col,
+            y: tile.row,
+        };
+        app.cache
+            .insert(Tile::new(key, tile.width, tile.height, tile.rgba));
+    }
+
+    let mut frame = vec![BG; (w as u32 * h as u32) as usize];
+    app.render_frame(&mut frame, w as u32, h as u32);
+
+    let mut rgba = Vec::with_capacity(frame.len() * 4);
+    for pixel in frame {
+        rgba.push((pixel >> 16) as u8);
+        rgba.push((pixel >> 8) as u8);
+        rgba.push(pixel as u8);
+        rgba.push(255);
+    }
+    let image = image::RgbaImage::from_raw(w as u32, h as u32, rgba)
+        .ok_or_else(|| "frame has the wrong size".to_string())?;
+    let mut png = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    std::fs::write(out, png).map_err(|e| e.to_string())?;
+    eprintln!("feather: wrote {out} ({w}×{h})");
+    Ok(())
+}
+
 fn main() {
     let mut path: Option<String> = None;
     let mut new_window = false;
+    let mut shot: Option<String> = None;
 
-    for arg in std::env::args().skip(1) {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--screenshot" => {
+                shot = Some(args.next().ok_or_else(|| {
+                    eprintln!("feather: --screenshot needs an output path");
+                    std::process::exit(2);
+                }).unwrap());
+            }
             "--new-window" => new_window = true,
             "-h" | "--help" => {
                 println!("feather-viewer [--new-window] [document]");
@@ -1767,6 +1878,18 @@ fn main() {
                 }
             }
         }
+    }
+
+    if let Some(out) = shot {
+        let Some(target) = path else {
+            eprintln!("feather: --screenshot needs a document");
+            std::process::exit(2);
+        };
+        if let Err(e) = screenshot(&target, &out) {
+            eprintln!("feather: {e}");
+            std::process::exit(1);
+        }
+        return;
     }
 
     // A second launch hands its path to the first and leaves — unless it was
