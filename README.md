@@ -34,8 +34,8 @@ look good" but "how long does it take to open a document and draw page one".
 | `feather` CLI — `info` and `render` | done — measures the budget |
 | Scroll model — page geometry, visible range, zoom anchoring | done, tested |
 | Window — open, fit to width, scroll, zoom, page | done — first light |
+| Tile cache in the draw path, render thread, stale-work cancellation | done |
 | Tabs, pinned tabs, multiple windows | next |
-| Tile cache in the draw path, render thread | next |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
@@ -65,6 +65,11 @@ cargo run --release -p feather-app -- some.pdf
 | `Esc` `q` | quit |
 
 There is no toolbar. There is nothing on a toolbar.
+
+The window never rasterises. A worker thread owns the document and draws pages
+into a byte-budgeted cache; the window only blits what is already there, so a
+400-page PDF scrolls without freezing and a fast flick drops the pages it has
+already left behind instead of queueing them.
 
 `render` prints its own timings to stderr:
 

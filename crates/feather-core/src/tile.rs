@@ -21,24 +21,27 @@ pub struct Tile {
     pub key: TileKey,
     pub width: u32,
     pub height: u32,
-    pub png: Vec<u8>,
+    /// Whatever the pipeline produced for this tile. The cache budgets and
+    /// evicts on this, and never looks inside it — one pipeline stores PNG,
+    /// the next stores raw RGBA, and the cache does not care.
+    pub data: Vec<u8>,
     /// Monotonic access counter; the smallest value is the eviction victim.
     used: u64,
 }
 
 impl Tile {
-    pub fn new(key: TileKey, width: u32, height: u32, png: Vec<u8>) -> Self {
+    pub fn new(key: TileKey, width: u32, height: u32, data: Vec<u8>) -> Self {
         Tile {
             key,
             width,
             height,
-            png,
+            data,
             used: 0,
         }
     }
 
     pub fn byte_len(&self) -> usize {
-        self.png.len()
+        self.data.len()
     }
 }
 
