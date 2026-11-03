@@ -79,6 +79,18 @@ jobs:
           cargo run --release -p feather-cli -- render tests/fixtures/book.epub 1 -o "$RUNNER_TEMP/book.png"
           check_png "$RUNNER_TEMP/book.png"
 
+          # The headless half of selection: the text layer a copy would use.
+          text=$(cargo run --release -p feather-cli -- text tests/fixtures/book.epub 1)
+          echo "$text" | head -3
+          case "$text" in
+            *"Chapter One"*) ;;
+            *) echo "::error::EPUB text layer did not contain the heading"; exit 1 ;;
+          esac
+          case "$text" in
+            *"café"*) ;;
+            *) echo "::error::entity decoding failed in the text layer"; exit 1 ;;
+          esac
+
       - name: Report binary size
         shell: bash
         run: |

@@ -1,4 +1,5 @@
 use crate::error::DocumentError;
+use crate::text_layer::TextLayer;
 
 /// The size of a page in points (1/72 inch), before any zoom is applied.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,6 +77,15 @@ pub trait Document: Send {
 
     /// Title for the tab strip and window title, if the document has one.
     fn title(&self) -> Option<String> {
+        None
+    }
+
+    /// Where the words are on a page, if this pipeline can tell us.
+    ///
+    /// Pipelines that hand the viewer a finished page image return `None` until
+    /// someone teaches them to extract text. A viewer whose selection depends on
+    /// this stays honest: selectable where it can be, inert where it cannot.
+    fn text_layer(&self, _page: usize) -> Option<TextLayer> {
         None
     }
 }

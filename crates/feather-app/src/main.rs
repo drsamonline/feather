@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use feather_core::{
     detect, level_capped, level_for_scale, scale_for_level, Document, Format, Layout, PageSize,
-    Session, Tile, TileCache, TileGrid, TileKey,
+    Session, TextLayer, Tile, TileCache, TileGrid, TileKey,
 };
 use feather_text::TextRenderer;
 
@@ -53,6 +53,7 @@ const TAB_ACTIVE: u32 = 0x0022_3039;
 const TAB_TEXT: u32 = 0x00C8_D4DA;
 const TAB_TEXT_ACTIVE: u32 = 0x00F2_F6F8;
 const UI_PX: f32 = 13.0;
+const SELECTION: u32 = 0x0040_7FBF;
 
 // ---------------------------------------------------------------- the worker
 
@@ -86,6 +87,9 @@ enum Reply {
         page_width: u32,
         page_height: u32,
         tiles: Vec<TileData>,
+        /// Words on the page, for selection. Empty when the pipeline cannot
+        /// report them.
+        words: Vec<feather_core::Word>,
     },
     Failed {
         doc: u32,
@@ -173,6 +177,10 @@ impl Renderer {
                                     });
                                 }
                             }
+                            let words = doc
+                                .text_layer(job.page)
+                                .map(|layer| layer.words)
+                                .unwrap_or_default();
                             let _ = res_tx.send(Reply::Page {
                                 doc: job.doc,
                                 page: job.page,
@@ -180,6 +188,7 @@ impl Renderer {
                                 page_width: width,
                                 page_height: height,
                                 tiles,
+                                words,
                             });
                             let _ = proxy.send_event(UserEvent::PageReady);
                         }
@@ -221,6 +230,27 @@ impl Renderer {
 }
 
 // ------------------------------------------------------------- single instance
+
+/// A run of words on one page, from the anchor the drag started on to the one it
+/// ended on. Same page only for now: cross-page selection needs a document-wide
+/// text order that no pipeline produces yet.
+#[derive(Debug, Clone, Copy)]
+struct Selection {
+    doc: u32,
+    page: usize,
+    anchor: usize,
+    focus: usize,
+}
+
+impl Selection {
+    fn range(&self) -> (usize, usize) {
+        if self.anchor <= self.focus {
+            (self.anchor, self.focus)
+        } else {
+            (self.focus, self.anchor)
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 enum UserEvent {
@@ -280,6 +310,10 @@ struct App {
     cache: TileCache,
     in_flight: HashSet<(u32, usize, u8)>,
     dims: HashMap<(u32, usize, u8), (u32, u32)>,
+    /// Text layers by `(doc, page)` — scale-independent, so stored once.
+    layers: HashMap<(u32, usize), TextLayer>,
+    selection: Option<Selection>,
+    dragging: bool,
     renderer: Renderer,
     generation: u64,
     /// The content area: the window minus the tab strip.
@@ -300,6 +334,9 @@ impl App {
             cache: TileCache::new(CACHE_BUDGET),
             in_flight: HashSet::new(),
             dims: HashMap::new(),
+            layers: HashMap::new(),
+            selection: None,
+            dragging: false,
             renderer,
             generation: 0,
             viewport: (900.0, 1100.0 - STRIP_H),
@@ -405,6 +442,7 @@ impl App {
         } else {
             self.session.prev();
         }
+        self.selection = None;
         self.invalidate();
         self.update_title();
     }
@@ -429,9 +467,13 @@ impl App {
                     page_width,
                     page_height,
                     tiles,
+                    words,
                 } => {
                     self.in_flight.remove(&(doc, page, level));
                     self.dims.insert((doc, page, level), (page_width, page_height));
+                    if !words.is_empty() {
+                        self.layers.insert((doc, page), TextLayer { words });
+                    }
 
                     let scale = scale_for_level(level);
                     if page_width > 0 && page_height > 0 {
@@ -510,6 +552,56 @@ impl App {
                 self.renderer
                     .request(doc, page, scale_for_level(level), generation);
             }
+        }
+    }
+
+    /// Where a page's top-left corner sits on screen.
+    fn page_origin(&self, doc: u32, page: usize) -> Option<(f32, f32)> {
+        let view = self.views.get(&doc)?;
+        let size = view.layout.page_size(page)?;
+        let zoom = view.layout.zoom();
+        Some((
+            (self.viewport.0 - size.width * zoom) / 2.0,
+            STRIP_H + view.layout.page_top(page) - view.layout.scroll_y(),
+        ))
+    }
+
+    /// Turn a screen point into `(page, word index)`.
+    fn hit(&self, sx: f32, sy: f32) -> Option<(usize, usize)> {
+        if sy < STRIP_H {
+            return None;
+        }
+        let doc = self.active_id()?;
+        let view = self.views.get(&doc)?;
+        let page = view
+            .layout
+            .page_at(sy - STRIP_H + view.layout.scroll_y());
+        let (ox, oy) = self.page_origin(doc, page)?;
+        let zoom = view.layout.zoom();
+        if zoom <= 0.0 {
+            return None;
+        }
+        let layer = self.layers.get(&(doc, page))?;
+        layer
+            .nearest_word((sx - ox) / zoom, (sy - oy) / zoom)
+            .map(|index| (page, index))
+    }
+
+    fn copy_selection(&mut self) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let Some(layer) = self.layers.get(&(selection.doc, selection.page)) else {
+            return;
+        };
+        let (start, end) = selection.range();
+        let text = layer.text_between(start, end);
+        if text.is_empty() {
+            return;
+        }
+        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text.clone())) {
+            Ok(()) => eprintln!("feather: copied {} characters", text.chars().count()),
+            Err(e) => eprintln!("feather: could not copy: {e}"),
         }
     }
 
@@ -636,6 +728,32 @@ impl App {
                             );
                         }
                     }
+
+                    // Selection is drawn over the page, washed so the text
+                    // underneath stays readable.
+                    if let Some(selection) = self.selection {
+                        if selection.doc == doc && selection.page == page {
+                            if let Some(layer) = self.layers.get(&(doc, page)) {
+                                let (first, last) = selection.range();
+                                for (index, word) in layer.words.iter().enumerate() {
+                                    if index < first || index > last {
+                                        continue;
+                                    }
+                                    fill_rect_alpha(
+                                        buf,
+                                        w,
+                                        h,
+                                        (px0 + word.x * zoom).round() as i32,
+                                        (py0 + word.y * zoom).round() as i32,
+                                        (word.width * zoom).round() as i32,
+                                        (word.height * zoom).round() as i32,
+                                        SELECTION,
+                                        96,
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -652,6 +770,7 @@ impl App {
         }
         view.page = page.min(view.layout.page_count() - 1);
         view.layout.scroll_to_page(view.page);
+        self.selection = None;
         self.invalidate();
         self.update_title();
     }
@@ -847,6 +966,44 @@ fn blit_scaled(
     }
 }
 
+/// Fill a rectangle blended over what is already there.
+#[allow(clippy::too_many_arguments)]
+fn fill_rect_alpha(
+    buf: &mut [u32],
+    dst_w: u32,
+    dst_h: u32,
+    x0: i32,
+    y0: i32,
+    w: i32,
+    h: i32,
+    colour: u32,
+    alpha: u32,
+) {
+    let r = (colour >> 16) & 0xff;
+    let g = (colour >> 8) & 0xff;
+    let b = colour & 0xff;
+    let mix = |f: u32, d: u32| ((f * alpha + d * (255 - alpha)) / 255) & 0xff;
+
+    for dy in 0..h {
+        let y = y0 + dy;
+        if y < 0 || y >= dst_h as i32 {
+            continue;
+        }
+        let row = (y as u32 * dst_w) as usize;
+        for dx in 0..w {
+            let x = x0 + dx;
+            if x < 0 || x >= dst_w as i32 {
+                continue;
+            }
+            let dst = buf[row + x as usize];
+            let dr = (dst >> 16) & 0xff;
+            let dg = (dst >> 8) & 0xff;
+            let db = dst & 0xff;
+            buf[row + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
+        }
+    }
+}
+
 fn fill_rect(
     buf: &mut [u32],
     dst_w: u32,
@@ -967,22 +1124,55 @@ impl ApplicationHandler<UserEvent> for App {
                     .map(|w| w.scale_factor() as f32)
                     .unwrap_or(1.0);
                 self.cursor = (position.x as f32 / scale, position.y as f32 / scale);
+
+                if self.dragging {
+                    if let Some(selection) = self.selection {
+                        if let Some((page, word)) = self.hit(self.cursor.0, self.cursor.1) {
+                            if page == selection.page {
+                                if let Some(s) = self.selection.as_mut() {
+                                    s.focus = word;
+                                }
+                                if let Some(w) = &self.window {
+                                    w.request_redraw();
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             WindowEvent::MouseInput {
-                state: ElementState::Pressed,
+                state,
                 button: MouseButton::Left,
                 ..
-            } => {
-                if self.cursor.1 < STRIP_H {
-                    if let Some(index) = tab_at(&self.session, self.cursor.0) {
-                        self.session.activate(index);
-                        self.invalidate();
-                        self.update_title();
-                        if let Some(w) = &self.window {
-                            w.request_redraw();
+            } => match state {
+                ElementState::Pressed => {
+                    if self.cursor.1 < STRIP_H {
+                        if let Some(index) = tab_at(&self.session, self.cursor.0) {
+                            self.session.activate(index);
+                            self.selection = None;
+                            self.invalidate();
+                            self.update_title();
                         }
+                    } else if let Some((page, word)) = self.hit(self.cursor.0, self.cursor.1) {
+                        if let Some(doc) = self.active_id() {
+                            self.selection = Some(Selection {
+                                doc,
+                                page,
+                                anchor: word,
+                                focus: word,
+                            });
+                            self.dragging = true;
+                        }
+                    } else {
+                        self.selection = None;
                     }
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
+                ElementState::Released => {
+                    self.dragging = false;
                 }
             }
 
@@ -1039,6 +1229,7 @@ impl ApplicationHandler<UserEvent> for App {
                         "]" => self.switch(1),
                         "[" => self.switch(-1),
                         "w" => self.close_active(),
+                        "c" => self.copy_selection(),
                         "p" => {
                             self.session.toggle_pinned_active();
                             self.invalidate();

@@ -20,4 +20,5 @@ feather-epub = { path = "../feather-epub" }
 feather-text = { path = "../feather-text" }
 winit = "0.30"
 softbuffer = "0.4"
+arboard = "3"
 image = { version = "0.25", default-features = false, features = ["png"] }

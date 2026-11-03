@@ -17,6 +17,7 @@ feather — read-only document viewer (M0 spike)
 USAGE:
     feather info <file>
     feather render <file> [page] [-o out.png] [-s scale]
+    feather text <file> [page]
 
 ARGS:
     <file>      document to open
@@ -38,6 +39,7 @@ fn main() -> ExitCode {
     let result = match args[0].as_str() {
         "info" => cmd_info(&args[1..]),
         "render" => cmd_render(&args[1..]),
+        "text" => cmd_text(&args[1..]),
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             Ok(())
@@ -99,6 +101,39 @@ fn cmd_info(args: &[String]) -> Result<(), String> {
         "total     {:.2} ms (read + open)",
         started.elapsed().as_secs_f64() * 1000.0
     );
+    Ok(())
+}
+
+/// Print the selectable text of one page, exactly as a copy would produce it.
+///
+/// This is the headless half of selection: if a pipeline can fill a text layer,
+/// `feather text` prints it, and CI can assert on it without a mouse.
+fn cmd_text(args: &[String]) -> Result<(), String> {
+    let path = args.first().ok_or("text needs a file")?;
+    let page: usize = match args.get(1) {
+        Some(n) => n.parse().map_err(|_| "page must be a number".to_string())?,
+        None => 1,
+    };
+    if page == 0 {
+        return Err("page numbers start at 1".into());
+    }
+
+    let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+    let format = detect(
+        &bytes,
+        std::path::Path::new(path).extension().and_then(|e| e.to_str()),
+    );
+    let doc = open_document(bytes, format).map_err(|e| format!("open failed: {e}"))?;
+
+    let layer = doc
+        .text_layer(page - 1)
+        .ok_or_else(|| format!("the {} pipeline has no text layer", format.as_str()))?;
+    if layer.is_empty() {
+        return Err("page has no selectable text".into());
+    }
+
+    let (start, end) = (0, layer.len() - 1);
+    println!("{}", layer.text_between(start, end));
     Ok(())
 }
 

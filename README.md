@@ -71,6 +71,8 @@ cargo run --release -p feather-app -- some.pdf
 | `Home` `End` | first / last page |
 | `]` `[` | next / previous tab |
 | click a tab | switch to it |
+| drag over text | select it (EPUB today) |
+| `c` | copy the selection |
 | `p` | pin or unpin the current tab |
 | `w` | close the current tab (refused if pinned) |
 | `Esc` `q` | quit |
@@ -81,6 +83,11 @@ The window never rasterises. A worker thread owns the document and draws pages
 into a byte-budgeted cache; the window only blits what is already there, so a
 400-page PDF scrolls without freezing and a fast flick drops the pages it has
 already left behind instead of queueing them.
+
+Text is selectable where a pipeline can say where the words are — drag to select,
+`c` to copy. EPUB can; PDF cannot yet, because hayro hands back a page image and
+extracting positioned words from it is the next piece of work. A viewer that
+pretends to select in a PDF it cannot read would be worse than one that does not.
 
 The tab strip is the only permanent chrome: one chip per document, the active
 one lit, a pin marked with `*`. Labels are drawn with the system's own sans

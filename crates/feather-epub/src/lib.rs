@@ -17,7 +17,7 @@
 use std::io::{Cursor, Read};
 use std::sync::Mutex;
 
-use feather_core::{natural_cmp, Document, DocumentError, PageSize, RenderedPage};
+use feather_core::{natural_cmp, Document, DocumentError, PageSize, RenderedPage, TextLayer, Word};
 use feather_text::TextRenderer;
 
 /// A4 in points. A reflowable format has no intrinsic page size, so we choose.
@@ -46,6 +46,8 @@ struct Line {
     /// Baseline, in points from the top of the page.
     y: f32,
     bold: bool,
+    /// Where each word sits, in page points — what selection hit-tests against.
+    words: Vec<Word>,
 }
 
 struct Layout {
@@ -223,6 +225,45 @@ impl Document for EpubDocument {
     fn title(&self) -> Option<String> {
         self.title.clone()
     }
+
+    fn text_layer(&self, page: usize) -> Option<TextLayer> {
+        self.with_layout(|layout| {
+            layout.pages.get(page).map(|lines| TextLayer {
+                words: lines
+                    .iter()
+                    .flat_map(|line| line.words.iter().cloned())
+                    .collect(),
+            })
+        })
+    }
+}
+
+/// Split a laid-out line into words with positions, so a click can land on one.
+fn word_boxes(
+    text: &TextRenderer,
+    line: &str,
+    px: f32,
+    x0: f32,
+    baseline: f32,
+) -> Vec<Word> {
+    let space = text.measure(" ", px);
+    let top = baseline - px * 0.78;
+    let height = px * 1.1;
+
+    let mut out = Vec::new();
+    let mut pen = x0;
+    for word in line.split_whitespace() {
+        let width = text.measure(word, px);
+        out.push(Word {
+            text: word.to_string(),
+            x: pen,
+            y: top,
+            width,
+            height,
+        });
+        pen += width + space;
+    }
+    out
 }
 
 fn heading_px(level: u8) -> f32 {
@@ -261,6 +302,7 @@ fn lay_out(text: &TextRenderer, blocks: &[Block]) -> Layout {
                 y = top;
             }
             y += advance;
+            let words = word_boxes(text, &line, px, MARGIN, y);
             if let Some(current) = pages.last_mut() {
                 current.push(Line {
                     text: line,
@@ -268,6 +310,7 @@ fn lay_out(text: &TextRenderer, blocks: &[Block]) -> Layout {
                     x: MARGIN,
                     y,
                     bold,
+                    words,
                 });
             }
         }

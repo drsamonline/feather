@@ -13,6 +13,7 @@
 //! * [`tile_plan`] — how a page becomes a grid of tiles, so a 20,000-pixel
 //!   scan costs the same as a letter-sized page.
 //! * [`session`] — which documents are open and which one you are reading.
+//! * [`text_layer`] — where the words are, so a click can become a position.
 
 pub mod document;
 pub mod error;
@@ -21,6 +22,7 @@ pub mod layout;
 pub mod natural;
 pub mod session;
 pub mod tile;
+pub mod text_layer;
 pub mod tile_plan;
 
 pub use document::{Document, PageSize, RenderedPage};
@@ -30,4 +32,5 @@ pub use layout::{level_capped, level_for_scale, scale_for_level, Layout};
 pub use natural::natural_cmp;
 pub use session::{Session, Tab};
 pub use tile::{Tile, TileCache, TileKey};
+pub use text_layer::{TextLayer, Word};
 pub use tile_plan::TileGrid;
