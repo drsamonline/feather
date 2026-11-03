@@ -36,7 +36,10 @@ look good" but "how long does it take to open a document and draw page one".
 | Window — open, fit to width, scroll, zoom, page | done — first light |
 | Tile cache in the draw path, render thread, stale-work cancellation | done |
 | Pages as a grid of tiles, with a raster ceiling for huge pages | done |
-| Tabs, pinned tabs, multiple windows | next |
+| Session model — tabs, pinning, dedupe, per-tab reading position | done, tested |
+| Single instance — a second launch becomes a tab, not a window | done |
+| Tab strip you can see and click | next (needs a text stack) |
+| Multiple windows | next |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
@@ -63,6 +66,9 @@ cargo run --release -p feather-app -- some.pdf
 | `+` `-` | zoom around the centre of the screen |
 | `1` | fit to width |
 | `Home` `End` | first / last page |
+| `]` `[` | next / previous tab |
+| `p` | pin or unpin the current tab |
+| `w` | close the current tab (refused if pinned) |
 | `Esc` `q` | quit |
 
 There is no toolbar. There is nothing on a toolbar.
@@ -71,6 +77,12 @@ The window never rasterises. A worker thread owns the document and draws pages
 into a byte-budgeted cache; the window only blits what is already there, so a
 400-page PDF scrolls without freezing and a fast flick drops the pages it has
 already left behind instead of queueing them.
+
+Open a second file while the viewer is running and it becomes a tab in the
+running window rather than a second window — the first launch owns a loopback
+port and later launches hand their path to it. Pinned tabs sort left and refuse
+to close. Tiles are keyed by document as well as page, so two tabs of the same
+PDF can never share a bitmap.
 
 Pages are cut into a grid of 512-pixel tiles, so the cache can evict a corner
 rather than a page. And a page whose raster would exceed 32 megapixels — a

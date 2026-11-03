@@ -10,6 +10,8 @@ use std::collections::HashMap;
 /// render and a crisp render of the same page never collide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TileKey {
+    /// Which open document this tile belongs to. Two tabs must never collide.
+    pub doc: u32,
     pub page: usize,
     pub level: u8,
     pub x: u32,
@@ -139,6 +141,21 @@ impl TileCache {
         self.used = 0;
     }
 
+    /// Drop every tile belonging to one document — used when its tab closes.
+    pub fn retain_doc(&mut self, doc: u32) {
+        let doomed: Vec<TileKey> = self
+            .tiles
+            .keys()
+            .copied()
+            .filter(|k| k.doc == doc)
+            .collect();
+        for key in doomed {
+            if let Some(tile) = self.tiles.remove(&key) {
+                self.used = self.used.saturating_sub(tile.byte_len());
+            }
+        }
+    }
+
     /// Drop every tile belonging to a page — used when a file changes on disk.
     pub fn invalidate_page(&mut self, page: usize) {
         let doomed: Vec<TileKey> = self
@@ -183,7 +200,18 @@ mod tests {
     use super::*;
 
     fn tile(page: usize, bytes: usize) -> Tile {
-        Tile::new(TileKey { page, level: 0, x: 0, y: 0 }, 10, 10, vec![0u8; bytes])
+        Tile::new(
+            TileKey {
+                doc: 1,
+                page,
+                level: 0,
+                x: 0,
+                y: 0,
+            },
+            10,
+            10,
+            vec![0u8; bytes],
+        )
     }
 
     #[test]
@@ -193,11 +221,11 @@ mod tests {
         cache.insert(tile(2, 100));
         cache.insert(tile(3, 100));
         // Touch page 1 so page 2 becomes the oldest.
-        let key1 = TileKey { page: 1, level: 0, x: 0, y: 0 };
+        let key1 = TileKey { doc: 1, page: 1, level: 0, x: 0, y: 0 };
         assert!(cache.get(&key1).is_some());
         cache.insert(tile(4, 100));
         assert_eq!(cache.used_bytes(), 300);
-        let key2 = TileKey { page: 2, level: 0, x: 0, y: 0 };
+        let key2 = TileKey { doc: 1, page: 2, level: 0, x: 0, y: 0 };
         assert!(cache.get(&key2).is_none(), "page 2 should have been evicted");
     }
 
@@ -216,6 +244,32 @@ mod tests {
         cache.insert(tile(1, 100));
         assert_eq!(cache.used_bytes(), 100);
         assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn the_same_page_in_two_documents_is_two_tiles() {
+        let mut cache = TileCache::new(1000);
+        let a = TileKey { doc: 1, page: 0, level: 4, x: 0, y: 0 };
+        let b = TileKey { doc: 2, page: 0, level: 4, x: 0, y: 0 };
+        cache.insert(Tile::new(a, 10, 10, vec![1u8; 100]));
+        cache.insert(Tile::new(b, 10, 10, vec![2u8; 100]));
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.used_bytes(), 200);
+    }
+
+    #[test]
+    fn closing_a_document_frees_only_its_tiles() {
+        let mut cache = TileCache::new(10_000);
+        for doc in 1..=2u32 {
+            for page in 0..3usize {
+                let key = TileKey { doc, page, level: 4, x: 0, y: 0 };
+                cache.insert(Tile::new(key, 10, 10, vec![0u8; 100]));
+            }
+        }
+        assert_eq!(cache.len(), 6);
+        cache.retain_doc(1);
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.used_bytes(), 300);
     }
 
     #[test]
