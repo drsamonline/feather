@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use feather_core::{
     detect, level_capped, level_for_scale, scale_for_level, Document, Format, Layout, PageSize,
-    Session, TextLayer, Tile, TileCache, TileGrid, TileKey,
+    Session, Snapshot, SnapshotTab, TextLayer, Tile, TileCache, TileGrid, TileKey,
 };
 use feather_text::TextRenderer;
 
@@ -45,6 +45,26 @@ const TILE_PX: u32 = 512;
 /// Ceiling on a single page's raster. A 20,000-pixel scan would otherwise ask
 /// for 1.6 GB; past this the page is rendered at a lower rung and upscaled.
 const MAX_RASTER_PIXELS: f32 = 32_000_000.0;
+/// Where the last session is remembered.
+///
+/// Platform convention rather than a directory next to the binary: an
+/// application installed read-only must still be able to remember your place.
+fn session_file() -> Option<PathBuf> {
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join("Library").join("Application Support"))
+    } else {
+        std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+            })
+    }?;
+    Some(base.join("feather").join("session"))
+}
+
 /// Where a second launch hands its path to the first.
 const IPC_PORT: u16 = 51789;
 /// Height of the tab strip, in logical pixels. The one piece of permanent chrome.
@@ -736,6 +756,75 @@ impl App {
         self.update_title();
     }
 
+    /// Write the open tabs and where you were in each.
+    fn save_session(&self) {
+        let Some(path) = session_file() else { return };
+
+        let tabs = self
+            .session
+            .tabs()
+            .iter()
+            .map(|tab| {
+                let view = self.views.get(&tab.id);
+                SnapshotTab {
+                    path: tab.path.to_string_lossy().to_string(),
+                    pinned: tab.pinned,
+                    page: view.map(|v| v.page).unwrap_or(0),
+                    zoom: view.map(|v| v.layout.zoom()).unwrap_or(1.0),
+                    scroll: view.map(|v| v.layout.scroll_y()).unwrap_or(0.0),
+                }
+            })
+            .collect();
+
+        let snapshot = Snapshot {
+            active: self.session.active_index().unwrap_or(0),
+            tabs,
+        };
+
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(e) = std::fs::write(&path, snapshot.encode()) {
+            eprintln!("feather: could not save the session: {e}");
+        }
+    }
+
+    /// Put the last session back. Missing files are dropped silently — a
+    /// deleted document should not stop the viewer from opening.
+    fn restore_session(&mut self) {
+        let Some(path) = session_file() else { return };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        let snapshot = Snapshot::decode(&text);
+        if snapshot.tabs.is_empty() {
+            return;
+        }
+
+        for tab in &snapshot.tabs {
+            let document = PathBuf::from(&tab.path);
+            if !document.exists() {
+                continue;
+            }
+            self.open_path(document);
+            if let Some(view) = self.view_mut() {
+                view.layout.set_zoom(tab.zoom);
+                let last = view.layout.page_count().saturating_sub(1);
+                view.page = tab.page.min(last);
+                view.layout.scroll_to_page(view.page);
+            }
+            if tab.pinned {
+                self.session.toggle_pinned_active();
+            }
+        }
+
+        if snapshot.active < self.session.len() {
+            self.session.activate(snapshot.active);
+        }
+        self.invalidate();
+        self.update_title();
+    }
+
     fn copy_selection(&mut self) {
         let Some(selection) = self.selection else {
             return;
@@ -1390,9 +1479,12 @@ impl ApplicationHandler<UserEvent> for App {
         self.surface = Some(surface);
         self.window = Some(window);
 
-        // The document was opened before the window existed, so its fit-to-width
-        // zoom used the default viewport. Fit again now that the real size is known.
-        if self.active_id().is_some() {
+        if self.session.is_empty() {
+            self.restore_session();
+        } else {
+            // The document was opened before the window existed, so its
+            // fit-to-width zoom used the default viewport. Fit again now that
+            // the real size is known.
             self.fit_width();
         }
         self.update_title();
@@ -1431,7 +1523,10 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.save_session();
+                event_loop.exit()
+            }
 
             WindowEvent::Resized(size) => {
                 if let Some(window) = &self.window {

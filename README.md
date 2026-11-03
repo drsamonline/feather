@@ -160,6 +160,14 @@ retained attribution. hayro is Apache/MIT, pure Rust, read-only by design, and
 cross-compiles to Windows ARM64 without a second machine. The cost is that EPUB
 reflow is ours to write. §12 of the plan argues this properly.
 
+## Picking up where you left off
+
+Close the window and the tabs, their pins and your place in each one come back
+next time. The file lives where the platform expects — `$XDG_STATE_HOME/feather`
+on Linux, `%APPDATA%\Feather` on Windows, `Application Support` on macOS — so an
+application installed read-only can still remember. A document that has since
+been deleted is dropped quietly rather than stopping the viewer from opening.
+
 ## Multiple windows
 
 `n` opens the current document in a window of its own, and

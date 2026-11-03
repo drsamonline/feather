@@ -178,6 +178,108 @@ impl Session {
     }
 }
 
+// ---------------------------------------------------------------- snapshot
+
+/// What to remember between runs: which documents were open, and where you were
+/// in each one.
+///
+/// A hand-rolled text format rather than a serialisation crate, because the
+/// whole point of this project is that it stands on nine dependencies. The
+/// format is one tab per line, tab-separated, with the path last so it can
+/// contain anything.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Snapshot {
+    pub tabs: Vec<SnapshotTab>,
+    pub active: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapshotTab {
+    pub path: String,
+    pub pinned: bool,
+    pub page: usize,
+    pub zoom: f32,
+    pub scroll: f32,
+}
+
+impl Snapshot {
+    pub fn encode(&self) -> String {
+        let mut out = String::from("feather-session 1\n");
+        out.push_str(&format!("active {}\n", self.active));
+        for tab in &self.tabs {
+            out.push_str(&format!(
+                "tab\t{}\t{}\t{}\t{}\t{}\n",
+                if tab.pinned { 1 } else { 0 },
+                tab.page,
+                tab.zoom,
+                tab.scroll,
+                escape(&tab.path)
+            ));
+        }
+        out
+    }
+
+    /// Lenient on purpose: a session file written by an older build, or edited
+    /// by hand, should cost you a restored tab — not a failure to start.
+    pub fn decode(text: &str) -> Snapshot {
+        let mut snapshot = Snapshot::default();
+        for line in text.lines() {
+            let mut parts = line.split('\t');
+            match parts.next() {
+                Some("active") => {
+                    if let Some(n) = line.split_whitespace().nth(1) {
+                        snapshot.active = n.parse().unwrap_or(0);
+                    }
+                }
+                Some("tab") => {
+                    let pinned = parts.next().unwrap_or("0") == "1";
+                    let page = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+                    let zoom = parts.next().and_then(|n| n.parse().ok()).unwrap_or(1.0);
+                    let scroll = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0.0);
+                    let path = parts.next().map(unescape).unwrap_or_default();
+                    if path.is_empty() {
+                        continue;
+                    }
+                    snapshot.tabs.push(SnapshotTab {
+                        path,
+                        pinned,
+                        page,
+                        zoom: if zoom > 0.0 { zoom } else { 1.0 },
+                        scroll,
+                    });
+                }
+                _ => {}
+            }
+        }
+        if snapshot.active >= snapshot.tabs.len() {
+            snapshot.active = 0;
+        }
+        snapshot
+    }
+}
+
+fn escape(path: &str) -> String {
+    path.replace('\\', "\\\\").replace('\t', "\\t")
+}
+
+fn unescape(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    let mut chars = path.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('t') => out.push('\t'),
+                Some('\\') => out.push('\\'),
+                Some(other) => out.push(other),
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +369,55 @@ mod tests {
         s.set_pinned(1, true);
         s.set_pinned(2, true);
         assert_eq!(titles(&s), vec!["b.pdf", "c.pdf", "a.pdf"]);
+    }
+
+    #[test]
+    fn a_snapshot_survives_a_round_trip() {
+        let snapshot = Snapshot {
+            active: 1,
+            tabs: vec![
+                SnapshotTab {
+                    path: "/home/reader/a book.pdf".into(),
+                    pinned: true,
+                    page: 12,
+                    zoom: 1.75,
+                    scroll: 4021.5,
+                },
+                SnapshotTab {
+                    path: "C:\\Users\\reader\\paper.pdf".into(),
+                    pinned: false,
+                    page: 0,
+                    zoom: 1.0,
+                    scroll: 0.0,
+                },
+            ],
+        };
+        assert_eq!(Snapshot::decode(&snapshot.encode()), snapshot);
+    }
+
+    #[test]
+    fn a_path_with_a_tab_in_it_survives() {
+        let snapshot = Snapshot {
+            active: 0,
+            tabs: vec![SnapshotTab {
+                path: "/tmp/odd\tname.pdf".into(),
+                pinned: false,
+                page: 3,
+                zoom: 2.0,
+                scroll: 10.0,
+            }],
+        };
+        let decoded = Snapshot::decode(&snapshot.encode());
+        assert_eq!(decoded.tabs[0].path, "/tmp/odd\tname.pdf");
+    }
+
+    #[test]
+    fn a_corrupt_session_costs_a_tab_not_a_start() {
+        let text = "feather-session 1\nactive 9\ntab\t1\tnot-a-number\t1.0\t0\t/x.pdf\ngarbage\ntab\t0\t0\t1\t0\t\n";
+        let decoded = Snapshot::decode(text);
+        assert_eq!(decoded.tabs.len(), 1);
+        assert_eq!(decoded.tabs[0].path, "/x.pdf");
+        assert_eq!(decoded.active, 0, "an out-of-range active tab resets");
     }
 
     #[test]

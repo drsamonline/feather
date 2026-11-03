@@ -30,7 +30,7 @@ pub use error::DocumentError;
 pub use format::{detect, Format};
 pub use layout::{level_capped, level_for_scale, scale_for_level, Layout};
 pub use natural::natural_cmp;
-pub use session::{Session, Tab};
+pub use session::{Session, Snapshot, SnapshotTab, Tab};
 pub use tile::{Tile, TileCache, TileKey};
 pub use text_layer::{TextLayer, Word};
 pub use tile_plan::TileGrid;
