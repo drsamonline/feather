@@ -32,7 +32,12 @@ look good" but "how long does it take to open a document and draw page one".
 | Byte-budgeted LRU tile cache | done, tested |
 | PDF pipeline (hayro, pure Rust, Apache/MIT) | done — renders real pages |
 | `feather` CLI — `info` and `render` | done — measures the budget |
-| Window, scrolling, zoom, tabs | next |
+| Scroll model — page geometry, visible range, zoom anchoring | done, tested |
+| Window — open, fit to width, scroll, zoom, page | done — first light |
+| Tabs, pinned tabs, multiple windows | next |
+| Tile cache in the draw path, render thread | next |
+| Shell integration, tray, hotkey | later (lifted from CLDR) |
+| EPUB, images, comics, Office read mode | later |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
 
@@ -43,6 +48,23 @@ cargo build --release
 ./target/release/feather info  some.pdf
 ./target/release/feather render some.pdf 1 -s 2.0 -o page1.png
 ```
+
+And the window itself:
+
+```sh
+cargo run --release -p feather-app -- some.pdf
+```
+
+| Key | Does |
+|---|---|
+| `↓` `↑` / `PgDn` `PgUp` / wheel | scroll |
+| `←` `→` | previous / next page |
+| `+` `-` | zoom around the centre of the screen |
+| `1` | fit to width |
+| `Home` `End` | first / last page |
+| `Esc` `q` | quit |
+
+There is no toolbar. There is nothing on a toolbar.
 
 `render` prints its own timings to stderr:
 
@@ -63,9 +85,11 @@ prints the binary size on every push so the number cannot drift quietly.
 
 ```
 crates/
-  feather-core/   Document trait · format router · tile cache   (no dependencies)
+  feather-core/   Document trait · format router · tile cache · scroll model
+                  (zero dependencies)
   feather-pdf/    PDF pipeline on hayro                          (pure Rust)
   feather-cli/    the spike: info + render, with timings
+  feather-app/    the window: winit + softbuffer                 (3 dependencies)
 ```
 
 `feather-core` has **zero dependencies** and does not know what a pixel looks

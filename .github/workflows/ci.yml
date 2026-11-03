@@ -25,6 +25,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Linux windowing headers
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/feather-core",
     "crates/feather-pdf",
+    "crates/feather-app",
     "crates/feather-cli",
 ]
 
