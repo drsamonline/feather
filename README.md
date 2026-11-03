@@ -13,7 +13,7 @@ annotation, no cloud, no plugins. One window, one document, nothing else.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust)](https://www.rust-lang.org/)
 
-[The plan](docs/plan.html) · [All projects](https://drsamonline.github.io/)
+[The plan](docs/plan.html) · [Landing page](https://drsamonline.github.io/feather/) · [All projects](https://drsamonline.github.io/)
 
 </div>
 
