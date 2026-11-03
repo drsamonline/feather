@@ -100,12 +100,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Count direct dependencies
         run: |
-          # The plan sets a ceiling of 25 direct crates (docs/plan.html §8).
-          # This is a coarse guard, not a substitute for cargo-deny.
-          total=$(grep -rhoE '^[a-z0-9_-]+ = ' --include=Cargo.toml crates/ | wc -l)
-          echo "declared dependencies: $total"
-          echo "### declared dependencies: $total / 25" >> "$GITHUB_STEP_SUMMARY"
+          # The plan sets a ceiling of 25 external crates (docs/plan.html §8).
+          # Only keys inside a [dependencies] table count, and only when they
+          # are not path dependencies — our own crates are not a budget item.
+          # (The first version of this counted `name =` and `path =` keys from
+          # [[bin]] tables too, which is how it silently reported 30.)
+          total=$(awk '
+            /^\[/ { in_deps = ($0 ~ /^\[(.*\.)?dependencies\]/); next }
+            in_deps && /^[A-Za-z0-9_-]+[[:space:]]*=/ {
+              if ($0 !~ /path[[:space:]]*=/) n++
+            }
+            END { print n + 0 }
+          ' $(find crates -name Cargo.toml | sort))
+          echo "external dependencies: $total"
+          echo "### external dependencies: $total / 25" >> "$GITHUB_STEP_SUMMARY"
           if [ "$total" -gt 25 ]; then
-            echo "Over the §8 budget of 25 direct dependencies."
+            echo "::error::over the §8 budget of 25 external dependencies"
             exit 1
           fi
