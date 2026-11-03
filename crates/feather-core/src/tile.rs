@@ -89,6 +89,12 @@ impl TileCache {
         (self.hits, self.misses)
     }
 
+    /// Look at a tile without disturbing the recency order or the counters.
+    /// Used to ask "do I already have this?" while deciding what to request.
+    pub fn peek(&self, key: &TileKey) -> Option<&Tile> {
+        self.tiles.get(key)
+    }
+
     /// Fetch a tile and mark it as most recently used.
     pub fn get(&mut self, key: &TileKey) -> Option<&Tile> {
         self.clock += 1;

@@ -13,7 +13,7 @@
 //!    away anything the reader has already scrolled past. A fast flick costs
 //!    nothing instead of building a backlog.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,7 +21,10 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::time::Instant;
 
-use feather_core::{detect, Document, Format, Layout, PageSize, Tile, TileCache, TileKey};
+use feather_core::{
+    detect, level_capped, level_for_scale, scale_for_level, Document, Format, Layout, PageSize,
+    Tile, TileCache, TileGrid, TileKey,
+};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -33,18 +36,11 @@ use winit::window::{Window, WindowId};
 const BG: u32 = 0x0010_1418;
 const PLACEHOLDER: u32 = 0x001B_2329;
 const CACHE_BUDGET: usize = 192 * 1024 * 1024;
-
-/// The zoom ladder. Rasters are cached per rung, so scrolling does not
-/// re-render at a slightly different scale every frame.
-const LADDER_STEPS_PER_POINT: f32 = 4.0;
-
-fn level_for_scale(scale: f32) -> u8 {
-    (scale * LADDER_STEPS_PER_POINT).round().clamp(1.0, 64.0) as u8
-}
-
-fn scale_for_level(level: u8) -> f32 {
-    level as f32 / LADDER_STEPS_PER_POINT
-}
+/// Edge length of one tile, in raster pixels.
+const TILE_PX: u32 = 512;
+/// Ceiling on a single page's raster. A 20,000-pixel scan would otherwise ask
+/// for 1.6 GB; past this the page is rendered at a lower rung and upscaled.
+const MAX_RASTER_PIXELS: f32 = 32_000_000.0;
 
 #[derive(Debug, Clone, Copy)]
 enum UserEvent {
@@ -57,13 +53,21 @@ struct Job {
     scale: f32,
 }
 
+struct TileData {
+    col: u32,
+    row: u32,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
 enum Reply {
-    Rendered {
+    Page {
         page: usize,
         level: u8,
-        width: u32,
-        height: u32,
-        rgba: Vec<u8>,
+        page_width: u32,
+        page_height: u32,
+        tiles: Vec<TileData>,
     },
     Failed {
         page: usize,
@@ -107,12 +111,39 @@ impl Renderer {
                                 }
                             };
                             let (width, height) = decoded.dimensions();
-                            let _ = res_tx.send(Reply::Rendered {
+                            let rgba = decoded.into_raw();
+                            let grid = TileGrid::new(width, height, TILE_PX);
+                            let mut tiles = Vec::with_capacity(grid.len() as usize);
+                            for row in 0..grid.rows {
+                                for col in 0..grid.cols {
+                                    let Some((sx, sy, tw, th)) = grid.tile_rect(col, row)
+                                    else {
+                                        continue;
+                                    };
+                                    let mut buf = Vec::with_capacity((tw * th * 4) as usize);
+                                    for line in 0..th {
+                                        let start =
+                                            (((sy + line) * width + sx) * 4) as usize;
+                                        let end = start + (tw * 4) as usize;
+                                        if end <= rgba.len() {
+                                            buf.extend_from_slice(&rgba[start..end]);
+                                        }
+                                    }
+                                    tiles.push(TileData {
+                                        col,
+                                        row,
+                                        width: tw,
+                                        height: th,
+                                        rgba: buf,
+                                    });
+                                }
+                            }
+                            let _ = res_tx.send(Reply::Page {
                                 page: job.page,
                                 level,
-                                width,
-                                height,
-                                rgba: decoded.into_raw(),
+                                page_width: width,
+                                page_height: height,
+                                tiles,
                             });
                             let _ = proxy.send_event(UserEvent::PageReady);
                         }
@@ -147,7 +178,12 @@ struct App {
     layout: Layout,
     page: usize,
     cache: TileCache,
-    in_flight: HashSet<TileKey>,
+    /// Pages currently being rendered, as `(page, level)`.
+    in_flight: HashSet<(usize, u8)>,
+    /// Real raster dimensions per `(page, level)`, as reported by the worker.
+    /// Tile boundaries come from these, never from a recomputed estimate, so a
+    /// tile can never land half a pixel off.
+    dims: HashMap<(usize, u8), (u32, u32)>,
     renderer: Renderer,
     generation: u64,
     window: Option<Rc<Window>>,
@@ -162,6 +198,7 @@ impl App {
             page: 0,
             cache: TileCache::new(CACHE_BUDGET),
             in_flight: HashSet::new(),
+            dims: HashMap::new(),
             renderer,
             generation: 0,
             window: None,
@@ -184,66 +221,80 @@ impl App {
     fn pump(&mut self) {
         while let Ok(reply) = self.renderer.results.try_recv() {
             match reply {
-                Reply::Rendered {
+                Reply::Page {
                     page,
                     level,
-                    width,
-                    height,
-                    rgba,
+                    page_width,
+                    page_height,
+                    tiles,
                 } => {
-                    let key = TileKey {
-                        page,
-                        level,
-                        x: 0,
-                        y: 0,
-                    };
-                    self.in_flight.remove(&key);
+                    self.in_flight.remove(&(page, level));
+                    self.dims.insert((page, level), (page_width, page_height));
 
-                    // A page whose real geometry differs from the placeholder
-                    // changes where every later page sits, so the layout is
-                    // corrected as soon as we know better.
                     let scale = scale_for_level(level);
-                    if width > 0 && height > 0 {
+                    if page_width > 0 && page_height > 0 {
                         let size = PageSize {
-                            width: width as f32 / scale,
-                            height: height as f32 / scale,
+                            width: page_width as f32 / scale,
+                            height: page_height as f32 / scale,
                         };
                         if self.layout.page_size(page) != Some(size) {
                             self.layout.set_page_size(page, size);
                         }
                     }
 
-                    self.cache.insert(Tile::new(key, width, height, rgba));
+                    for tile in tiles {
+                        let key = TileKey {
+                            page,
+                            level,
+                            x: tile.col,
+                            y: tile.row,
+                        };
+                        self.cache
+                            .insert(Tile::new(key, tile.width, tile.height, tile.rgba));
+                    }
                 }
                 Reply::Failed { page, error } => {
+                    self.in_flight.retain(|(p, _)| *p != page);
                     eprintln!("feather: page {} failed to render: {error}", page + 1);
                 }
             }
         }
     }
 
-    /// Ask the worker for every visible page we do not already hold.
+    /// Ask the worker for every visible page whose tiles we do not already hold.
     fn request_visible(&mut self) {
-        let level = level_for_scale(self.layout.zoom());
-        let scale = scale_for_level(level);
         let (first, last) = self.layout.visible_range();
         let generation = self.generation;
 
         for page in first..=last {
-            let key = TileKey {
-                page,
-                level,
-                x: 0,
-                y: 0,
-            };
-            if self.cache.get(&key).is_some() {
-                continue;
-            }
+            let level = level_for_page(&self.layout, page);
+            let key = (page, level);
             if self.in_flight.contains(&key) {
                 continue;
             }
-            self.in_flight.insert(key);
-            self.renderer.request(page, scale, generation);
+
+            let known = self.dims.get(&key).copied();
+            let missing = match known {
+                Some((w, h)) => {
+                    let grid = TileGrid::new(w, h, TILE_PX);
+                    grid.visible(0, 0, w as i32, h as i32).iter().any(|(col, row)| {
+                        let k = TileKey {
+                            page,
+                            level,
+                            x: *col,
+                            y: *row,
+                        };
+                        self.cache.peek(&k).is_none()
+                    })
+                }
+                None => true,
+            };
+
+            if missing {
+                self.in_flight.insert(key);
+                self.renderer
+                    .request(page, scale_for_level(level), generation);
+            }
         }
     }
 
@@ -278,7 +329,7 @@ impl App {
             return;
         };
 
-        let level = level_for_scale(self.layout.zoom());
+        let zoom = self.layout.zoom();
         let (first, last) = self.layout.visible_range();
 
         {
@@ -288,24 +339,65 @@ impl App {
             }
 
             for page in first..=last {
-                let top = self.layout.page_top(page) - self.layout.scroll_y();
+                let level = level_for_page(&self.layout, page);
+                let scale = scale_for_level(level);
                 let size = self.layout.page_size(page).unwrap_or(PageSize::A4);
-                let page_w = size.width * self.layout.zoom();
-                let x0 = ((vw - page_w) / 2.0).round() as i32;
-                let y0 = top.round() as i32;
+                let page_w = size.width * zoom;
+                let page_h = size.height * zoom;
+                let px0 = (vw - page_w) / 2.0;
+                let py0 = self.layout.page_top(page) - self.layout.scroll_y();
 
-                let key = TileKey {
-                    page,
-                    level,
-                    x: 0,
-                    y: 0,
-                };
-                match self.cache.get(&key) {
-                    Some(tile) => {
-                        blit(buf, w, h, x0, y0, tile);
+                match self.dims.get(&(page, level)).copied() {
+                    Some((raster_w, raster_h)) => {
+                        let grid = TileGrid::new(raster_w, raster_h, TILE_PX);
+                        // How much one raster pixel is stretched on screen.
+                        let k = if scale > 0.0 { zoom / scale } else { 1.0 };
+                        for row in 0..grid.rows {
+                            for col in 0..grid.cols {
+                                let Some((sx, sy, tw, th)) = grid.tile_rect(col, row)
+                                else {
+                                    continue;
+                                };
+                                let dx = px0 + sx as f32 * k;
+                                let dy = py0 + sy as f32 * k;
+                                let dw = tw as f32 * k;
+                                let dh = th as f32 * k;
+                                if dy + dh < 0.0 || dy > vh || dx + dw < 0.0 || dx > vw {
+                                    continue;
+                                }
+                                let key = TileKey {
+                                    page,
+                                    level,
+                                    x: col,
+                                    y: row,
+                                };
+                                match self.cache.get(&key) {
+                                    Some(tile) => blit_scaled(buf, w, h, dx, dy, dw, dh, tile),
+                                    None => fill_rect(
+                                        buf,
+                                        w,
+                                        h,
+                                        dx.round() as i32,
+                                        dy.round() as i32,
+                                        dw.round() as i32,
+                                        dh.round() as i32,
+                                        PLACEHOLDER,
+                                    ),
+                                }
+                            }
+                        }
                     }
                     None => {
-                        fill_rect(buf, w, h, x0, y0, page_w as i32, (size.height * self.layout.zoom()) as i32, PLACEHOLDER);
+                        fill_rect(
+                            buf,
+                            w,
+                            h,
+                            px0.round() as i32,
+                            py0.round() as i32,
+                            page_w.round() as i32,
+                            page_h.round() as i32,
+                            PLACEHOLDER,
+                        );
                     }
                 }
             }
@@ -340,41 +432,81 @@ impl App {
     }
 }
 
-/// Copy a tile into the framebuffer, clipping to the viewport and compositing
-/// over whatever is already there.
-fn blit(buf: &mut [u32], dst_w: u32, dst_h: u32, x0: i32, y0: i32, tile: &Tile) {
-    let src_w = tile.width as i32;
-    let src_h = tile.height as i32;
-    for dy in 0..src_h {
-        let y = y0 + dy;
+/// Which rung to rasterise `page` at, given the current zoom and the ceiling on
+/// a single page's raster.
+fn level_for_page(layout: &Layout, page: usize) -> u8 {
+    let size = layout.page_size(page).unwrap_or(PageSize::A4);
+    level_capped(layout.zoom(), size, MAX_RASTER_PIXELS)
+}
+
+/// Copy a tile into the framebuffer at an arbitrary destination size, clipping
+/// to the viewport and compositing over whatever is already there.
+///
+/// Nearest-neighbour on purpose: the tile was rendered for a rung of the zoom
+/// ladder, and the only time it is stretched is when the raster ceiling forced
+/// a lower rung on a very large page. Bilinear can come later, when there is a
+/// measurement that says it is worth the per-pixel cost.
+fn blit_scaled(
+    buf: &mut [u32],
+    dst_w: u32,
+    dst_h: u32,
+    dx: f32,
+    dy: f32,
+    dw: f32,
+    dh: f32,
+    tile: &Tile,
+) {
+    let x0 = dx.round() as i32;
+    let y0 = dy.round() as i32;
+    let w = dw.round().max(1.0) as i32;
+    let h = dh.round().max(1.0) as i32;
+    let sw = tile.width as i32;
+    let sh = tile.height as i32;
+    if sw <= 0 || sh <= 0 {
+        return;
+    }
+
+    for row in 0..h {
+        let y = y0 + row;
         if y < 0 || y >= dst_h as i32 {
             continue;
         }
-        let row = (y as u32 * dst_w) as usize;
-        for dx in 0..src_w {
-            let x = x0 + dx;
+        let sy = (row as i64 * sh as i64 / h as i64) as i32;
+        let base = (y as u32 * dst_w) as usize;
+        for col in 0..w {
+            let x = x0 + col;
             if x < 0 || x >= dst_w as i32 {
                 continue;
             }
-            let si = ((dy * src_w + dx) * 4) as usize;
+            let sx = (col as i64 * sw as i64 / w as i64) as i32;
+            let si = ((sy * sw + sx) * 4) as usize;
             if si + 3 >= tile.data.len() {
-                return;
+                continue;
             }
             let a = tile.data[si + 3] as u32;
             let r = tile.data[si] as u32;
             let g = tile.data[si + 1] as u32;
             let b = tile.data[si + 2] as u32;
-            let dst = buf[row + x as usize];
+            let dst = buf[base + x as usize];
             let dr = (dst >> 16) & 0xff;
             let dg = (dst >> 8) & 0xff;
             let db = dst & 0xff;
             let mix = |f: u32, d: u32| ((f * a + d * (255 - a)) / 255) & 0xff;
-            buf[row + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
+            buf[base + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
         }
     }
 }
 
-fn fill_rect(buf: &mut [u32], dst_w: u32, dst_h: u32, x0: i32, y0: i32, w: i32, h: i32, colour: u32) {
+fn fill_rect(
+    buf: &mut [u32],
+    dst_w: u32,
+    dst_h: u32,
+    x0: i32,
+    y0: i32,
+    w: i32,
+    h: i32,
+    colour: u32,
+) {
     for dy in 0..h {
         let y = y0 + dy;
         if y < 0 || y >= dst_h as i32 {

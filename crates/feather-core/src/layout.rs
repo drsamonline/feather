@@ -17,6 +17,38 @@ pub const PAGE_GAP: f32 = 12.0;
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 8.0;
 
+/// Rasters are cached per rung of this ladder, so scrolling and small zoom
+/// nudges reuse work instead of re-rendering at a slightly different scale.
+pub const LADDER_STEPS_PER_POINT: f32 = 4.0;
+
+/// The ladder rung a zoom maps to.
+pub fn level_for_scale(scale: f32) -> u8 {
+    (scale * LADDER_STEPS_PER_POINT).round().clamp(1.0, 64.0) as u8
+}
+
+/// The raster scale a rung stands for.
+pub fn scale_for_level(level: u8) -> f32 {
+    level as f32 / LADDER_STEPS_PER_POINT
+}
+
+/// The rung to rasterise a page at: the one the reader asked for, stepped down
+/// until the page fits inside `max_pixels`.
+///
+/// This is the guard that makes an enormous page possible. A 20,000-pixel scan
+/// at 1.0 would need 1.6 GB for one bitmap; capping the raster and stretching
+/// it on screen costs sharpness, not the whole process.
+pub fn level_capped(zoom: f32, page: PageSize, max_pixels: f32) -> u8 {
+    let mut level = level_for_scale(zoom);
+    while level > 1 {
+        let s = scale_for_level(level);
+        if page.width * s * page.height * s <= max_pixels {
+            break;
+        }
+        level -= 1;
+    }
+    level
+}
+
 #[derive(Debug, Clone)]
 pub struct Layout {
     pages: Vec<PageSize>,
@@ -309,6 +341,35 @@ mod tests {
         let l = layout_with(1);
         // 800px viewport / 600pt page
         assert!((l.fit_width_zoom(0) - 800.0 / 600.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn ladder_round_trips() {
+        for level in 1u8..=32 {
+            assert_eq!(level_for_scale(scale_for_level(level)), level);
+        }
+    }
+
+    #[test]
+    fn a_huge_page_is_capped_to_a_lower_rung() {
+        // 20,000 x 20,000 points at 1.0 would be 400 million pixels.
+        let huge = PageSize {
+            width: 20_000.0,
+            height: 20_000.0,
+        };
+        let level = level_capped(1.0, huge, 32_000_000.0);
+        assert!(level < level_for_scale(1.0));
+        let s = scale_for_level(level);
+        assert!(huge.width * s * huge.height * s <= 32_000_000.0);
+    }
+
+    #[test]
+    fn a_normal_page_is_never_capped() {
+        let a4 = PageSize {
+            width: 595.0,
+            height: 842.0,
+        };
+        assert_eq!(level_capped(2.0, a4, 32_000_000.0), level_for_scale(2.0));
     }
 
     #[test]

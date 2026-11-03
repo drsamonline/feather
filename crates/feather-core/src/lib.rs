@@ -10,15 +10,19 @@
 //!   screen, as pure arithmetic with no rendering in it.
 //! * [`tile`] — a byte-budgeted LRU cache, because the whole speed story is
 //!   "render only what is on screen, and remember what you just drew".
+//! * [`tile_plan`] — how a page becomes a grid of tiles, so a 20,000-pixel
+//!   scan costs the same as a letter-sized page.
 
 pub mod document;
 pub mod error;
 pub mod format;
 pub mod layout;
 pub mod tile;
+pub mod tile_plan;
 
 pub use document::{Document, PageSize, RenderedPage};
 pub use error::DocumentError;
 pub use format::{detect, Format};
-pub use layout::Layout;
+pub use layout::{level_capped, level_for_scale, scale_for_level, Layout};
 pub use tile::{Tile, TileCache, TileKey};
+pub use tile_plan::TileGrid;

@@ -35,6 +35,7 @@ look good" but "how long does it take to open a document and draw page one".
 | Scroll model — page geometry, visible range, zoom anchoring | done, tested |
 | Window — open, fit to width, scroll, zoom, page | done — first light |
 | Tile cache in the draw path, render thread, stale-work cancellation | done |
+| Pages as a grid of tiles, with a raster ceiling for huge pages | done |
 | Tabs, pinned tabs, multiple windows | next |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
@@ -70,6 +71,11 @@ The window never rasterises. A worker thread owns the document and draws pages
 into a byte-budgeted cache; the window only blits what is already there, so a
 400-page PDF scrolls without freezing and a fast flick drops the pages it has
 already left behind instead of queueing them.
+
+Pages are cut into a grid of 512-pixel tiles, so the cache can evict a corner
+rather than a page. And a page whose raster would exceed 32 megapixels — a
+20,000-pixel scan, a poster-sized vector drawing — is rendered at a lower rung
+of the zoom ladder and stretched on screen: you lose sharpness, not the process.
 
 `render` prints its own timings to stderr:
 
