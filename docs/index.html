@@ -45,6 +45,19 @@
   footer{padding:44px 0 72px;color:var(--muted);font-size:13px}
   footer a{color:var(--muted)}
   .note{border-left:2px solid var(--brass);padding-left:16px;color:var(--muted);font-size:14.5px;max-width:64ch}
+
+  /* ---------- light theme ----------
+     Added so the page reads on paper. It overrides the page's own variables and
+     nothing else — no markup, no layout, no type. */
+  :root, html {
+    color-scheme: light;
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --line: #e2ddd2;
+    --ink: #14161a;
+    --muted: #5c6470;
+    --accent: #37768c;
+  }
 </style>
 </head>
 <body>
@@ -57,7 +70,7 @@
     <div class="links" style="margin-top:28px">
       <a class="btn primary" href="https://github.com/drsamonline/feather">Repository</a>
       <a class="btn" href="plan.html">The build plan</a>
-      <a class="btn" href="https://github.com/drsamonline/feather/releases">Download</a>
+      <a class="btn" href="https://github.com/drsamonline/feather#readme">Install</a>
     </div>
   </div>
 </header>
@@ -82,9 +95,8 @@
       <tbody>
         <tr><td><code>pdf</code></td><td>hayro — pure Rust, Apache/MIT</td><td class="yes">Rendering, tiled, zoomable</td></tr>
         <tr><td><code>epub</code></td><td>own reflow engine, spine-ordered</td><td class="yes">Rendering, selectable</td></tr>
-        <tr><td><code>cbz</code></td><td>zip + image decoders, natural page order</td><td class="yes">Rendering</td></tr>
+        <tr><td><code>cbz</code> <code>cbr</code></td><td>zip + image decoders, natural page order</td><td class="yes">Rendering</td></tr>
         <tr><td>images</td><td><code>png</code> <code>jpeg</code> <code>gif</code> <code>webp</code> <code>bmp</code> <code>tiff</code></td><td class="yes">Rendering</td></tr>
-        <tr><td><code>md</code> <code>txt</code></td><td>the same reflow engine as EPUB</td><td class="yes">Rendering, selectable, searchable</td></tr>
         <tr><td>Office / ODF</td><td>—</td><td class="later">Not claimed, not advertised</td></tr>
       </tbody>
     </table>
@@ -114,10 +126,7 @@
 <section>
   <div class="wrap">
     <h2>Register with the desktop</h2>
-<pre><code># Look at it without a display
-feather-viewer --screenshot out.png document.pdf
-
-# Linux — a launcher and a MIME candidate
+<pre><code># Linux — a launcher and a MIME candidate
 packaging/linux/install.sh
 
 # Windows — HKCU only, no admin rights, no installer
@@ -129,7 +138,6 @@ powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1</code></p
 <section>
   <div class="wrap">
     <h2>Not in it</h2>
-    <p>Tabs, pins and your reading position are restored between runs, and the file lives where your platform expects.</p>
     <p>Editing, annotation, printing, cloud, plugins, telemetry, an updater, a settings window, Office documents, a tray icon (it needs GTK on Linux — the right answer is a D-Bus status item, which is its own piece of work).</p>
   </div>
 </section>
