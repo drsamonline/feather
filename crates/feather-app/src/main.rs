@@ -1753,6 +1753,10 @@ fn main() {
                 println!("feather-viewer [--new-window] [document]");
                 return;
             }
+            "-V" | "--version" => {
+                println!("feather-viewer {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
             other if other.starts_with('-') => {
                 eprintln!("feather: unknown option {other}");
                 std::process::exit(2);

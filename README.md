@@ -194,6 +194,13 @@ currently needs none — for a status icon. The right Linux answer is a
 StatusNotifierItem over D-Bus (`ksni`), which is a self-contained piece of work
 rather than a dependency swap, and it is not in this milestone.
 
+## Download
+
+Prebuilt binaries are attached to [releases](https://github.com/drsamonline/feather/releases):
+Linux x86-64, Windows x86-64 and macOS arm64, each with a SHA-256 beside it. The
+archives contain the single binary, the licence and this README — there is
+nothing else to install.
+
 ## Registering with the desktop
 
 ```sh

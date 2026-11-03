@@ -42,6 +42,10 @@ fn main() -> ExitCode {
         "render" => cmd_render(&args[1..]),
         "text" => cmd_text(&args[1..]),
         "find" => cmd_find(&args[1..]),
+        "-V" | "--version" => {
+            println!("feather {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             Ok(())

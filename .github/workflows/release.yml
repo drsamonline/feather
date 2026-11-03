@@ -1,0 +1,124 @@
+name: Release
+
+# Two ways in: push a tag, or press the button. The tag names the release; a
+# manual run names it after the commit, so a build can be tried before it is
+# promised to anyone.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.archive }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: feather-linux-x86_64
+            binary: feather-viewer
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: feather-windows-x86_64
+            binary: feather-viewer.exe
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: feather-macos-arm64
+            binary: feather-viewer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev fonts-dejavu-core
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked -p feather-app --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="dist/${{ matrix.archive }}"
+          mkdir -p "dist/${{ matrix.archive }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.archive }}/"
+          cp README.md LICENSE "dist/${{ matrix.archive }}/"
+
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            (cd dist && 7z a -tzip "${{ matrix.archive }}.zip" "${{ matrix.archive }}" > /dev/null)
+            rm -rf "dist/${{ matrix.archive }}"
+            file="dist/${{ matrix.archive }}.zip"
+          else
+            (cd dist && tar -czf "${{ matrix.archive }}.tar.gz" "${{ matrix.archive }}")
+            rm -rf "dist/${{ matrix.archive }}"
+            file="dist/${{ matrix.archive }}.tar.gz"
+          fi
+
+          # A checksum next to the archive, because a download nobody can verify
+          # is a download nobody should trust.
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$file" | sed "s|dist/||" > "$file.sha256"
+          else
+            shasum -a 256 "$file" | sed "s|dist/||" > "$file.sha256"
+          fi
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="nightly-${GITHUB_SHA::7}"
+          fi
+          echo "publishing $tag"
+          ls -l dist
+
+          gh release view "$tag" > /dev/null 2>&1 || \
+            gh release create "$tag" --title "$tag" --generate-notes --prerelease
+
+          gh release upload "$tag" dist/* --clobber
+
+          echo "### $tag" >> "$GITHUB_STEP_SUMMARY"
+          for f in dist/*; do
+            echo "- $(basename "$f") — $(du -h "$f" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+          done
