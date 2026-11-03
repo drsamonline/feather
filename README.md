@@ -195,6 +195,18 @@ currently needs none — for a status icon. The right Linux answer is a
 StatusNotifierItem over D-Bus (`ksni`), which is a self-contained piece of work
 rather than a dependency swap, and it is not in this milestone.
 
+## Looking at it without a display
+
+```sh
+feather-viewer --screenshot out.png document.pdf
+```
+
+Builds the frame through the same function the window uses — the surface is
+taken out of the application for the duration of a frame — and writes it as a
+PNG. No window, no display, so it works in a container. CI renders two
+screenshots on every push and keeps them as artifacts; a frame that comes out
+suspiciously small fails the build, because that is what a blank page looks like.
+
 ## Download
 
 Prebuilt binaries are attached to [releases](https://github.com/drsamonline/feather/releases):

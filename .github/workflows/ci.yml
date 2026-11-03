@@ -125,6 +125,35 @@ jobs:
             *) echo "::error::search found the wrong number of hits"; exit 1 ;;
           esac
 
+      - name: Render the interface with no display
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          ./target/release/feather-viewer --screenshot shots/epub.png tests/fixtures/book.epub
+          ./target/release/feather-viewer --screenshot shots/pdf.png tests/fixtures/minimal.pdf
+
+          # A blank frame compresses to almost nothing. This will not catch a
+          # subtle layout regression, but it will catch "the page stopped
+          # rendering at all", which is the failure that matters.
+          for f in shots/*.png; do
+            size=$(stat -c%s "$f")
+            echo "$f — $size bytes"
+            if [ "$size" -lt 10000 ]; then
+              echo "::error::$f is suspiciously small; the frame is probably blank"
+              exit 1
+            fi
+          done
+
+      - name: Keep the screenshots
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: interface-screenshots
+          path: shots/*.png
+          if-no-files-found: error
+
       - name: Report binary size
         shell: bash
         run: |
