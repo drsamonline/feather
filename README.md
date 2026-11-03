@@ -44,10 +44,12 @@ look good" but "how long does it take to open a document and draw page one".
 | Tab strip — labels, active chip, click to switch | done |
 | Multiple windows | next |
 | Desktop integration — .desktop, registry, MIME candidates | done (Linux, Windows) |
-| Tray, hotkey, single-instance summon | later (lifted from CLDR) |
+| Global shortcut — Ctrl+Alt+F summons the window | done |
+| Tray icon | deferred — see below |
 | EPUB, images, comics, Office read mode | later |
 | Desktop integration — .desktop, registry, MIME candidates | done (Linux, Windows) |
-| Tray, hotkey, single-instance summon | later (lifted from CLDR) |
+| Global shortcut — Ctrl+Alt+F summons the window | done |
+| Tray icon | deferred — see below |
 | EPUB, images, comics, Office read mode | later |
 
 ## Try it
@@ -73,6 +75,7 @@ cargo run --release -p feather-app -- some.pdf
 | `Home` `End` | first / last page |
 | `]` `[` | next / previous tab |
 | click a tab | switch to it |
+| `Ctrl+Alt+F` (anywhere) | summon the window |
 | drag over text | select it (EPUB today) |
 | `c` | copy the selection |
 | `p` | pin or unpin the current tab |
@@ -153,6 +156,20 @@ dependency in this estate, and awkward beside a licence whose point is a
 retained attribution. hayro is Apache/MIT, pure Rust, read-only by design, and
 cross-compiles to Windows ARM64 without a second machine. The cost is that EPUB
 reflow is ours to write. §12 of the plan argues this properly.
+
+## Summoning
+
+`Ctrl+Alt+F` from anywhere brings the window up — un-minimised, focused, on top.
+That is the honest version of "open the document selected in the file manager":
+no desktop exposes the shell's selection to a third party, so the shortcut
+raises the viewer and the path can be pasted or dropped into it. On Wayland the
+registration fails and Feather says so once, rather than silently doing nothing.
+
+**The tray icon is deferred, on purpose.** `tray-icon` needs GTK on Linux, which
+would pull a few hundred megabytes of development libraries into a build that
+currently needs none — for a status icon. The right Linux answer is a
+StatusNotifierItem over D-Bus (`ksni`), which is a self-contained piece of work
+rather than a dependency swap, and it is not in this milestone.
 
 ## Registering with the desktop
 

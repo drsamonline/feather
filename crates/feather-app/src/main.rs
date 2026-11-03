@@ -28,6 +28,8 @@ use feather_core::{
 };
 use feather_text::TextRenderer;
 
+use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -322,6 +324,9 @@ struct App {
     window_size: (f32, f32),
     text: TextRenderer,
     cursor: (f32, f32),
+    /// Kept alive for the life of the process: dropping the manager unregisters
+    /// the shortcut. `None` when the platform refused — Wayland, usually.
+    hotkey: Option<GlobalHotKeyManager>,
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
 }
@@ -343,6 +348,7 @@ impl App {
             window_size: (900.0, 1100.0),
             text: TextRenderer::load(),
             cursor: (0.0, 0.0),
+            hotkey: None,
             window: None,
             surface: None,
         }
@@ -623,6 +629,47 @@ impl App {
             }
             _ => window.set_title("Feather"),
         }
+    }
+
+    /// Register the summon shortcut.
+    ///
+    /// This is the honest substitute for "open the document selected in the
+    /// file manager": no desktop exposes the shell's selection to a third
+    /// party, so the shortcut brings the viewer up and the path can be pasted
+    /// or dropped on it. §7 of the plan argues this at length.
+    fn install_hotkey(&mut self) {
+        if self.hotkey.is_some() {
+            return;
+        }
+        let manager = match GlobalHotKeyManager::new() {
+            Ok(manager) => manager,
+            Err(e) => {
+                eprintln!("feather: no global shortcut on this platform ({e}) — summon by launching again");
+                return;
+            }
+        };
+
+        // Ctrl+Alt+F everywhere. On a Mac that reads as Control-Option-F, which
+        // is deliberately not a system shortcut.
+        let hotkey = HotKey::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyF);
+        match manager.register(hotkey) {
+            Ok(()) => {
+                eprintln!("feather: press Ctrl+Alt+F to summon the window");
+                self.hotkey = Some(manager);
+            }
+            Err(e) => {
+                eprintln!("feather: could not register Ctrl+Alt+F ({e}) — another app may hold it");
+            }
+        }
+    }
+
+    /// Bring the window back: from minimised, from behind, from another desktop.
+    fn summon(&mut self) {
+        let Some(window) = &self.window else { return };
+        window.set_minimized(false);
+        window.set_visible(true);
+        window.focus_window();
+        window.request_redraw();
     }
 
     fn draw(&mut self) {
@@ -1079,9 +1126,20 @@ impl ApplicationHandler<UserEvent> for App {
             self.fit_width();
         }
         self.update_title();
+        self.install_hotkey();
 
         if let Some(w) = &self.window {
             w.request_redraw();
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // The hotkey arrives on a channel rather than as a window event; the
+        // loop drains it whenever it would otherwise sleep.
+        while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            if event.state == HotKeyState::Pressed {
+                self.summon();
+            }
         }
     }
 

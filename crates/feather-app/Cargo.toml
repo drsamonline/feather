@@ -21,4 +21,5 @@ feather-text = { path = "../feather-text" }
 winit = "0.30"
 softbuffer = "0.4"
 arboard = "3"
+global-hotkey = "0.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
