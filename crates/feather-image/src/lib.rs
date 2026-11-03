@@ -6,7 +6,7 @@
 
 use std::io::{Cursor, Read};
 
-use feather_core::{Document, DocumentError, PageSize, RenderedPage};
+use feather_core::{natural_cmp, Document, DocumentError, PageSize, RenderedPage};
 
 use image::{imageops::FilterType, DynamicImage, ImageFormat, RgbaImage};
 
@@ -16,61 +16,6 @@ fn is_image_name(name: &str) -> bool {
     [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"]
         .iter()
         .any(|ext| lower.ends_with(ext))
-}
-
-/// Sort names the way a reader expects: `page2` before `page10`.
-///
-/// Plain lexicographic order puts page 10 second, which in a comic is a page out
-/// of sequence and in a scan is a chapter out of order.
-fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-
-    let mut ai = a.chars().peekable();
-    let mut bi = b.chars().peekable();
-
-    loop {
-        match (ai.peek().copied(), bi.peek().copied()) {
-            (None, None) => return Ordering::Equal,
-            (None, Some(_)) => return Ordering::Less,
-            (Some(_), None) => return Ordering::Greater,
-            (Some(ac), Some(bc)) => {
-                if ac.is_ascii_digit() && bc.is_ascii_digit() {
-                    let mut an = String::new();
-                    while let Some(c) = ai.peek().copied() {
-                        if c.is_ascii_digit() {
-                            an.push(c);
-                            ai.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    let mut bn = String::new();
-                    while let Some(c) = bi.peek().copied() {
-                        if c.is_ascii_digit() {
-                            bn.push(c);
-                            bi.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    let av: u128 = an.parse().unwrap_or(0);
-                    let bv: u128 = bn.parse().unwrap_or(0);
-                    match av.cmp(&bv) {
-                        Ordering::Equal => continue,
-                        other => return other,
-                    }
-                } else {
-                    match ac.cmp(&bc) {
-                        Ordering::Equal => {
-                            ai.next();
-                            bi.next();
-                        }
-                        other => return other,
-                    }
-                }
-            }
-        }
-    }
 }
 
 fn encode_png(img: RgbaImage) -> Result<Vec<u8>, DocumentError> {
@@ -241,17 +186,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn natural_order_puts_page_10_after_page_9() {
-        let mut names = vec!["p10.png", "p2.png", "p1.png", "p20.png", "p9.png"];
+    fn comic_pages_come_out_in_reading_order() {
+        let mut names = vec!["page10.png", "page2.png", "page1.png"];
         names.sort_by(|a, b| natural_cmp(a, b));
-        assert_eq!(names, vec!["p1.png", "p2.png", "p9.png", "p10.png", "p20.png"]);
-    }
-
-    #[test]
-    fn natural_order_falls_back_to_text() {
-        use std::cmp::Ordering;
-        assert_eq!(natural_cmp("cover.png", "page1.png"), Ordering::Less);
-        assert_eq!(natural_cmp("same.png", "same.png"), Ordering::Equal);
+        assert_eq!(names, vec!["page1.png", "page2.png", "page10.png"]);
     }
 
     #[test]

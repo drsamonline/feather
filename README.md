@@ -33,6 +33,7 @@ look good" but "how long does it take to open a document and draw page one".
 | PDF pipeline (hayro, pure Rust, Apache/MIT) | done — renders real pages |
 | Image pipeline — one picture, one page | done |
 | Comic pipeline — CBZ, natural page order | done |
+| EPUB pipeline — reflowed text, its own layout engine | done, first cut |
 | `feather` CLI — `info` and `render` | done — measures the budget |
 | Scroll model — page geometry, visible range, zoom anchoring | done, tested |
 | Window — open, fit to width, scroll, zoom, page | done — first light |
@@ -120,6 +121,8 @@ crates/
                   · session                                  (zero dependencies)
   feather-pdf/    PDF pipeline on hayro                          (pure Rust)
   feather-image/  still images, and CBZ as an archive of them
+  feather-text/   glyph rasterisation, shared by the window and the pipelines
+  feather-epub/   reflowable text: strip, wrap, paginate
   feather-cli/    the spike: info + render, with timings
   feather-app/    the window: winit + softbuffer + two font crates
 ```

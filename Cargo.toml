@@ -4,6 +4,8 @@ members = [
     "crates/feather-core",
     "crates/feather-pdf",
     "crates/feather-image",
+    "crates/feather-text",
+    "crates/feather-epub",
     "crates/feather-app",
     "crates/feather-cli",
 ]

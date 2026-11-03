@@ -1,0 +1,15 @@
+[package]
+name = "feather-epub"
+description = "Reflowable EPUB pipeline for Feather — the layout engine the plan warned about"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+feather-core = { path = "../feather-core" }
+feather-text = { path = "../feather-text" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }

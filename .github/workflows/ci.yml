@@ -74,6 +74,11 @@ jobs:
           cargo run --release -p feather-cli -- render tests/fixtures/pages.cbz 3 -o "$RUNNER_TEMP/page3.png"
           check_png "$RUNNER_TEMP/page3.png"
 
+          # Reflowable: the one format that has to lay text out itself.
+          cargo run --release -p feather-cli -- info tests/fixtures/book.epub
+          cargo run --release -p feather-cli -- render tests/fixtures/book.epub 1 -o "$RUNNER_TEMP/book.png"
+          check_png "$RUNNER_TEMP/book.png"
+
       - name: Report binary size
         shell: bash
         run: |

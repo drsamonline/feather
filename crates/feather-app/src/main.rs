@@ -26,6 +26,7 @@ use feather_core::{
     detect, level_capped, level_for_scale, scale_for_level, Document, Format, Layout, PageSize,
     Session, Tile, TileCache, TileGrid, TileKey,
 };
+use feather_text::TextRenderer;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -265,157 +266,6 @@ fn start_listener(proxy: EventLoopProxy<UserEvent>) {
 }
 
 
-// ---------------------------------------------------------------------- text
-
-/// Just enough text to label a tab.
-///
-/// fontdue rasterises glyphs; fontdb finds a face the system already has, so
-/// nothing is embedded and the binary does not grow by a megabyte of font. This
-/// is Latin-only on purpose: mapping a char to a glyph is not shaping, and
-/// Devanagari or Arabic would come out wrong. A real shaper is its own block
-/// (plan §11, R16) and pretending otherwise here would be worse than a plain
-/// label.
-struct Text {
-    font: Option<fontdue::Font>,
-}
-
-impl Text {
-    fn load() -> Self {
-        let font = (|| {
-            let mut db = fontdb::Database::new();
-            db.load_system_fonts();
-            let query = fontdb::Query {
-                families: &[fontdb::Family::SansSerif],
-                ..fontdb::Query::default()
-            };
-            let id = db.query(&query)?;
-            let (data, index) = db.with_face_data(id, |data, index| (data.to_vec(), index))?;
-            fontdue::Font::from_bytes(
-                data,
-                fontdue::FontSettings {
-                    collection_index: index,
-                    ..Default::default()
-                },
-            )
-            .ok()
-        })();
-
-        if font.is_none() {
-            eprintln!("feather: no system font found — labels will be blank");
-        }
-        Text { font }
-    }
-
-    fn measure(&self, text: &str, px: f32) -> f32 {
-        match &self.font {
-            Some(font) => text
-                .chars()
-                .map(|c| font.metrics(c, px).advance_width)
-                .sum(),
-            // Rough fallback so layout still works without a font.
-            None => text.chars().count() as f32 * px * 0.55,
-        }
-    }
-
-    /// Shorten with an ellipsis until it fits.
-    fn elide(&self, text: &str, px: f32, max_width: f32) -> String {
-        if self.measure(text, px) <= max_width {
-            return text.to_string();
-        }
-        let mut out = String::new();
-        for ch in text.chars() {
-            let mut candidate = out.clone();
-            candidate.push(ch);
-            candidate.push('…');
-            if self.measure(&candidate, px) > max_width {
-                break;
-            }
-            out.push(ch);
-        }
-        out.push('…');
-        out
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn draw(
-        &self,
-        buf: &mut [u32],
-        dst_w: u32,
-        dst_h: u32,
-        x: f32,
-        baseline: f32,
-        text: &str,
-        px: f32,
-        colour: u32,
-        clip: (i32, i32, i32, i32),
-    ) {
-        let Some(font) = &self.font else { return };
-        let mut pen = x;
-        for ch in text.chars() {
-            let (metrics, bitmap) = font.rasterize(ch, px);
-            let gx = pen + metrics.xmin as f32;
-            let gy = baseline - (metrics.height as f32 + metrics.ymin as f32);
-            blit_alpha(
-                buf,
-                dst_w,
-                dst_h,
-                gx.round() as i32,
-                gy.round() as i32,
-                metrics.width,
-                metrics.height,
-                &bitmap,
-                colour,
-                clip,
-            );
-            pen += metrics.advance_width;
-        }
-    }
-}
-
-/// Composite an 8-bit coverage bitmap in one colour, clipped to a rectangle.
-#[allow(clippy::too_many_arguments)]
-fn blit_alpha(
-    buf: &mut [u32],
-    dst_w: u32,
-    dst_h: u32,
-    x0: i32,
-    y0: i32,
-    w: usize,
-    h: usize,
-    coverage: &[u8],
-    colour: u32,
-    clip: (i32, i32, i32, i32),
-) {
-    let (cx0, cy0, cx1, cy1) = clip;
-    let r = (colour >> 16) & 0xff;
-    let g = (colour >> 8) & 0xff;
-    let b = colour & 0xff;
-
-    for row in 0..h {
-        let y = y0 + row as i32;
-        if y < 0 || y >= dst_h as i32 || y < cy0 || y >= cy1 {
-            continue;
-        }
-        let base = (y as u32 * dst_w) as usize;
-        for col in 0..w {
-            let x = x0 + col as i32;
-            if x < 0 || x >= dst_w as i32 || x < cx0 || x >= cx1 {
-                continue;
-            }
-            let a = coverage[row * w + col] as u32;
-            if a == 0 {
-                continue;
-            }
-            let dst = buf[base + x as usize];
-            let dr = (dst >> 16) & 0xff;
-            let dg = (dst >> 8) & 0xff;
-            let db = dst & 0xff;
-            let mix = |f: u32, d: u32| ((f * a + d * (255 - a)) / 255) & 0xff;
-            buf[base + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
-        }
-    }
-}
-
 // ------------------------------------------------------------------- the view
 
 /// Per-tab reading position, so switching tabs does not lose your place.
@@ -436,7 +286,7 @@ struct App {
     viewport: (f32, f32),
     /// The whole window, in logical pixels.
     window_size: (f32, f32),
-    text: Text,
+    text: TextRenderer,
     cursor: (f32, f32),
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
@@ -454,7 +304,7 @@ impl App {
             generation: 0,
             viewport: (900.0, 1100.0 - STRIP_H),
             window_size: (900.0, 1100.0),
-            text: Text::load(),
+            text: TextRenderer::load(),
             cursor: (0.0, 0.0),
             window: None,
             surface: None,
@@ -833,7 +683,7 @@ impl App {
 }
 
 /// The one piece of permanent chrome: one chip per open document.
-fn draw_strip(session: &Session, text: &Text, buf: &mut [u32], w: u32, h: u32) {
+fn draw_strip(session: &Session, text: &TextRenderer, buf: &mut [u32], w: u32, h: u32) {
     fill_rect(buf, w, h, 0, 0, w as i32, STRIP_H as i32, STRIP_BG);
 
     let active = session.active_index();
@@ -911,6 +761,9 @@ fn open_document(bytes: Vec<u8>, format: Format) -> Result<Box<dyn Document>, St
             .map(|d| Box::new(d) as Box<dyn Document>)
             .map_err(|e| e.to_string()),
         Format::Comic => feather_image::ComicDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        Format::Epub => feather_epub::EpubDocument::from_bytes(bytes)
             .map(|d| Box::new(d) as Box<dyn Document>)
             .map_err(|e| e.to_string()),
         other => Err(format!(

@@ -1,0 +1,13 @@
+[package]
+name = "feather-text"
+description = "Glyph rasterisation shared by the window and the reflowable pipelines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fontdue = "0.9"
+fontdb = "0.23"
