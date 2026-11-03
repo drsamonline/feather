@@ -897,25 +897,44 @@ fn tab_at(session: &Session, x: f32) -> Option<usize> {
     }
 }
 
+/// The router's other half: a format, and the pipeline that can read it.
+///
+/// This match is the only place in the window that knows a format exists. Adding
+/// one means a new arm here and a new crate — nothing else in the app changes,
+/// which is the claim §6 of the plan makes and this is where it is kept.
+fn open_document(bytes: Vec<u8>, format: Format) -> Result<Box<dyn Document>, String> {
+    match format {
+        Format::Pdf => feather_pdf::PdfDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        Format::Image => feather_image::ImageDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        Format::Comic => feather_image::ComicDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        other => Err(format!(
+            "the {} pipeline is not implemented yet",
+            other.as_str()
+        )),
+    }
+}
+
 fn load(path: &PathBuf) -> Result<(Box<dyn Document>, usize, PageSize), String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     let ext = path.extension().and_then(|e| e.to_str());
     let format = detect(&bytes, ext);
-    if format != Format::Pdf {
-        return Err(format!(
-            "the {} pipeline is not wired into the window yet — only PDF for now",
-            format.as_str()
-        ));
-    }
-    let doc = feather_pdf::PdfDocument::from_bytes(bytes).map_err(|e| e.to_string())?;
+    let doc = open_document(bytes, format)?;
     let count = doc.page_count();
-    // One cheap raster at quarter scale gives the real page geometry, so the
-    // fit-to-width zoom is exact instead of a guess from an A4 placeholder.
+
+    // Page geometry if the pipeline knows it; otherwise one cheap raster at
+    // quarter scale, so the fit-to-width zoom is exact rather than a guess.
     let placeholder = doc
-        .render(0, 0.25)
-        .map(|r| r.implied_page_size())
+        .page_size(0)
+        .or_else(|| doc.render(0, 0.25).ok().map(|r| r.implied_page_size()))
         .unwrap_or(PageSize::A4);
-    Ok((Box::new(doc), count, placeholder))
+
+    Ok((doc, count, placeholder))
 }
 
 /// Copy a tile into the framebuffer at an arbitrary destination size, clipping

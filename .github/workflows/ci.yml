@@ -55,12 +55,24 @@ jobs:
           cargo run --release -p feather-cli -- info tests/fixtures/minimal.pdf
           out="$RUNNER_TEMP/m0.png"
           cargo run --release -p feather-cli -- render tests/fixtures/minimal.pdf 1 -s 2.0 -o "$out"
-          magic=$(head -c 4 "$out" | od -An -tx1 | tr -d ' \n')
-          echo "rendered PNG magic: $magic"
-          if [ "$magic" != "89504e47" ]; then
-            echo "::error::render produced something that is not a PNG"
-            exit 1
-          fi
+          check_png() {
+            magic=$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')
+            echo "rendered PNG magic for $1: $magic"
+            if [ "$magic" != "89504e47" ]; then
+              echo "::error::$1 is not a PNG"
+              exit 1
+            fi
+          }
+          check_png "$out"
+
+          # A still image, and a comic whose page order only comes out right
+          # with natural sorting (page1, page2, page10).
+          cargo run --release -p feather-cli -- render tests/fixtures/tiny.png 1 -o "$RUNNER_TEMP/tiny.png"
+          check_png "$RUNNER_TEMP/tiny.png"
+
+          cargo run --release -p feather-cli -- info tests/fixtures/pages.cbz
+          cargo run --release -p feather-cli -- render tests/fixtures/pages.cbz 3 -o "$RUNNER_TEMP/page3.png"
+          check_png "$RUNNER_TEMP/page3.png"
 
       - name: Report binary size
         shell: bash

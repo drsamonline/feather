@@ -54,6 +54,24 @@ fn main() -> ExitCode {
     }
 }
 
+/// The router's other half — the same match the window uses, deliberately kept
+/// identical so the headless spike and the GUI can never disagree about what a
+/// format means.
+fn open_document(bytes: Vec<u8>, format: Format) -> Result<Box<dyn Document>, String> {
+    match format {
+        Format::Pdf => feather_pdf::PdfDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        Format::Image => feather_image::ImageDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        Format::Comic => feather_image::ComicDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
+        other => Err(format!("the {} pipeline is not implemented yet", other.as_str())),
+    }
+}
+
 fn cmd_info(args: &[String]) -> Result<(), String> {
     let path = args.first().ok_or("info needs a file")?;
     let path = PathBuf::from(path);
@@ -69,20 +87,15 @@ fn cmd_info(args: &[String]) -> Result<(), String> {
     println!("format    {}", format.as_str());
     println!("sniffed   {:.2} ms", read.as_secs_f64() * 1000.0);
 
-    match format {
-        Format::Pdf => {
-            let doc = feather_pdf::PdfDocument::from_bytes(bytes)
-                .map_err(|e| format!("open failed: {e}"))?;
-            println!("pages     {}", doc.page_count());
-            println!("total     {:.2} ms (read + open)", started.elapsed().as_secs_f64() * 1000.0);
-        }
-        other => {
-            println!(
-                "pipeline  {} — not implemented yet (see docs/plan.html §13)",
-                other.as_str()
-            );
-        }
+    let doc = open_document(bytes, format).map_err(|e| format!("open failed: {e}"))?;
+    println!("pages     {}", doc.page_count());
+    if let Some(size) = doc.page_size(0) {
+        println!("page 1    {:.0} × {:.0} pt", size.width, size.height);
     }
+    println!(
+        "total     {:.2} ms (read + open)",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
     Ok(())
 }
 
@@ -127,15 +140,7 @@ fn cmd_render(args: &[String]) -> Result<(), String> {
     let read_done = started.elapsed();
 
     let format = detect(&bytes, path.extension().and_then(|e| e.to_str()));
-    if format != Format::Pdf {
-        return Err(format!(
-            "the {} pipeline is not implemented yet — only PDF renders today",
-            format.as_str()
-        ));
-    }
-
-    let doc = feather_pdf::PdfDocument::from_bytes(bytes)
-        .map_err(|e| format!("open failed: {e}"))?;
+    let doc = open_document(bytes, format).map_err(|e| format!("open failed: {e}"))?;
     let opened = started.elapsed();
 
     let index = page - 1;

@@ -31,6 +31,8 @@ look good" but "how long does it take to open a document and draw page one".
 | `Document` trait — the contract every format implements | done |
 | Byte-budgeted LRU tile cache | done, tested |
 | PDF pipeline (hayro, pure Rust, Apache/MIT) | done — renders real pages |
+| Image pipeline — one picture, one page | done |
+| Comic pipeline — CBZ, natural page order | done |
 | `feather` CLI — `info` and `render` | done — measures the budget |
 | Scroll model — page geometry, visible range, zoom anchoring | done, tested |
 | Window — open, fit to width, scroll, zoom, page | done — first light |
@@ -115,10 +117,11 @@ prints the binary size on every push so the number cannot drift quietly.
 ```
 crates/
   feather-core/   Document trait · format router · tile cache · scroll model
-                  (zero dependencies)
+                  · session                                  (zero dependencies)
   feather-pdf/    PDF pipeline on hayro                          (pure Rust)
+  feather-image/  still images, and CBZ as an archive of them
   feather-cli/    the spike: info + render, with timings
-  feather-app/    the window: winit + softbuffer                 (3 dependencies)
+  feather-app/    the window: winit + softbuffer + two font crates
 ```
 
 `feather-core` has **zero dependencies** and does not know what a pixel looks
@@ -126,8 +129,10 @@ like on screen. The UI will hold a `Box<dyn Document>` and never match on a file
 extension again — that single rule is what stops a fourteen-format viewer from
 becoming fourteen special cases in the window code.
 
-Adding a format means one enum variant, one router arm, one `Document` impl.
-Nothing else in the tree changes.
+Adding a format means one enum variant, one router arm, one `Document` impl, and
+one line in the `open_document` factory. Nothing else in the tree changes —
+`feather-image` was added to prove it, and the window did not learn what an image
+is.
 
 ## Why hayro and not MuPDF
 
