@@ -131,13 +131,19 @@ jobs:
           # are not path dependencies — our own crates are not a budget item.
           # (The first version of this counted `name =` and `path =` keys from
           # [[bin]] tables too, which is how it silently reported 30.)
+          # Counted per distinct crate, not per manifest line: `image` appears in
+          # three manifests and `zip` in two, and the plan's budget is about how
+          # many third-party crates the project depends on.
           total=$(awk '
             /^\[/ { in_deps = ($0 ~ /^\[(.*\.)?dependencies\]/); next }
             in_deps && /^[A-Za-z0-9_-]+[[:space:]]*=/ {
-              if ($0 !~ /path[[:space:]]*=/) n++
+              if ($0 !~ /path[[:space:]]*=/) {
+                split($0, parts, "=");
+                gsub(/[[:space:]]/, "", parts[1]);
+                print parts[1]
+              }
             }
-            END { print n + 0 }
-          ' $(find crates -name Cargo.toml | sort))
+          ' $(find crates -name Cargo.toml | sort) | sort -u | wc -l)
           echo "external dependencies: $total"
           echo "### external dependencies: $total / 25" >> "$GITHUB_STEP_SUMMARY"
           if [ "$total" -gt 25 ]; then
