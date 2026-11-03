@@ -80,7 +80,7 @@ jobs:
           check_png "$RUNNER_TEMP/book.png"
 
           # The headless half of selection: the text layer a copy would use.
-          text=$(cargo run --release -p feather-cli -- text tests/fixtures/book.epub 1)
+          text=$(cargo run --release -p feather-cli -- text tests/fixtures/book.epub)
           echo "$text" | head -3
           case "$text" in
             *"Chapter One"*) ;;
@@ -89,6 +89,15 @@ jobs:
           case "$text" in
             *"café"*) ;;
             *) echo "::error::entity decoding failed in the text layer"; exit 1 ;;
+          esac
+          # The spine lists both chapters; nav.xhtml is in the manifest but not
+          # in the spine, so it must not appear.
+          case "$text" in
+            *"Chapter Two"*) ;;
+            *) echo "::error::the spine did not include the second chapter"; exit 1 ;;
+          esac
+          case "$text" in
+            *"Contents"*) echo "::error::navigation leaked into the book"; exit 1 ;;
           esac
 
       - name: Report binary size

@@ -71,41 +71,40 @@ impl EpubDocument {
         let mut archive = zip::ZipArchive::new(Cursor::new(data.as_slice()))
             .map_err(|e| DocumentError::Decode(format!("not a readable EPUB: {e}")))?;
 
-        // v1 simplification: every XHTML document in the archive, in natural
-        // order, minus navigation files. A real implementation reads
-        // META-INF/container.xml for the OPF and follows the spine — that is the
-        // next commit, not this one.
-        let mut names = Vec::new();
-        for i in 0..archive.len() {
-            let file = archive
-                .by_index(i)
-                .map_err(|e| DocumentError::Decode(e.to_string()))?;
-            if file.is_dir() {
-                continue;
-            }
-            let name = file.name().to_string();
-            let lower = name.to_ascii_lowercase();
-            let is_markup = lower.ends_with(".xhtml") || lower.ends_with(".html") || lower.ends_with(".htm");
-            let is_navigation = lower.contains("nav") || lower.contains("toc") || lower.contains("cover");
-            if is_markup && !is_navigation {
-                names.push(name);
-            }
-        }
-        names.sort_by(|a, b| natural_cmp(a, b));
+        // The reading order comes from the package document, not from the file
+        // names: an EPUB's spine is what the author said to read, and everything
+        // else in the archive — the cover, the nav, the colophon — is furniture.
+        let container = read_entry(&mut archive, "META-INF/container.xml");
+        let opf_path = container
+            .as_deref()
+            .and_then(|xml| find_elements(xml, "rootfile").first().copied())
+            .and_then(|tag| attr(tag, "full-path"));
 
-        if names.is_empty() {
+        let spine = opf_path
+            .as_deref()
+            .and_then(|path| read_entry(&mut archive, path))
+            .map(|opf| parse_package(&opf, opf_path.as_deref().unwrap_or("")));
+
+        let (documents, title) = match spine {
+            Some(package) if !package.documents.is_empty() => {
+                (package.documents, package.title)
+            }
+            // A malformed package document should not make the book unreadable:
+            // fall back to every XHTML file in natural order.
+            _ => (fallback_documents(&mut archive), None),
+        };
+
+        if documents.is_empty() {
             return Err(DocumentError::Decode(
-                "archive contains no XHTML documents".to_string(),
+                "archive contains no readable documents".to_string(),
             ));
         }
 
         let mut blocks = Vec::new();
-        for name in &names {
-            let mut file = archive
-                .by_name(name)
-                .map_err(|e| DocumentError::Decode(e.to_string()))?;
-            let mut html = String::new();
-            file.read_to_string(&mut html)?;
+        for name in &documents {
+            let Some(html) = read_entry(&mut archive, name) else {
+                continue;
+            };
             blocks.extend(extract_blocks(&html));
         }
 
@@ -117,7 +116,7 @@ impl EpubDocument {
             text: TextRenderer::load(),
             blocks,
             layout: Mutex::new(None),
-            title: names.first().cloned(),
+            title,
         })
     }
 
@@ -324,6 +323,166 @@ fn lay_out(text: &TextRenderer, blocks: &[Block]) -> Layout {
     Layout { pages }
 }
 
+
+// ------------------------------------------------------------- package document
+
+/// What the OPF says: the reading order, and what the book is called.
+struct Package {
+    documents: Vec<String>,
+    title: Option<String>,
+}
+
+fn read_entry<R: Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>, name: &str) -> Option<String> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut out = String::new();
+    file.read_to_string(&mut out).ok()?;
+    Some(out)
+}
+
+/// The directory part of a path inside the archive, with its trailing slash.
+fn dir_of(path: &str) -> String {
+    match path.rfind('/') {
+        Some(index) => path[..=index].to_string(),
+        None => String::new(),
+    }
+}
+
+/// Resolve an href against the package document's directory.
+fn resolve(base_dir: &str, href: &str) -> String {
+    if href.starts_with('/') {
+        return href.trim_start_matches('/').to_string();
+    }
+    let mut parts: Vec<&str> = base_dir.split('/').filter(|s| !s.is_empty()).collect();
+    for segment in href.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+fn parse_package(opf: &str, opf_path: &str) -> Package {
+    let base_dir = dir_of(opf_path);
+
+    // id -> href, from the manifest.
+    let mut manifest: Vec<(String, String)> = Vec::new();
+    for tag in find_elements(opf, "item") {
+        if let (Some(id), Some(href)) = (attr(tag, "id"), attr(tag, "href")) {
+            manifest.push((id, href));
+        }
+    }
+
+    // Reading order, from the spine.
+    let mut documents = Vec::new();
+    for tag in find_elements(opf, "itemref") {
+        let Some(idref) = attr(tag, "idref") else { continue };
+        if let Some((_, href)) = manifest.iter().find(|(id, _)| *id == idref) {
+            documents.push(resolve(&base_dir, href));
+        }
+    }
+
+    Package {
+        documents,
+        title: element_text(opf, "dc:title"),
+    }
+}
+
+/// Every XHTML document in the archive, in natural order — the fallback when the
+/// package document is missing or unreadable.
+fn fallback_documents<R: Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>) -> Vec<String> {
+    let mut names = Vec::new();
+    for i in 0..archive.len() {
+        let Ok(file) = archive.by_index(i) else {
+            continue;
+        };
+        if file.is_dir() {
+            continue;
+        }
+        let name = file.name().to_string();
+        let lower = name.to_ascii_lowercase();
+        let is_markup =
+            lower.ends_with(".xhtml") || lower.ends_with(".html") || lower.ends_with(".htm");
+        let is_furniture = lower.contains("nav") || lower.contains("toc") || lower.contains("cover");
+        if is_markup && !is_furniture {
+            names.push(name);
+        }
+    }
+    names.sort_by(|a, b| natural_cmp(a, b));
+    names
+}
+
+/// Pull `name="value"` out of a tag.
+fn attr(tag: &str, name: &str) -> Option<String> {
+    let needle = format!("{name}=");
+    let mut search = tag;
+    let mut offset = 0;
+    while let Some(index) = search.find(&needle) {
+        let absolute = offset + index;
+        // Must be a whole attribute name, not the tail of a longer one.
+        let boundary_ok = absolute == 0
+            || tag[..absolute]
+                .chars()
+                .next_back()
+                .map(|c| c.is_whitespace() || c == '<')
+                .unwrap_or(true);
+        let rest = &tag[absolute + needle.len()..];
+        let quote = rest.chars().next();
+        if boundary_ok && (quote == Some('"') || quote == Some('\'')) {
+            let q = quote.unwrap();
+            let inner = &rest[1..];
+            if let Some(end) = inner.find(q) {
+                return Some(inner[..end].to_string());
+            }
+        }
+        offset = absolute + needle.len();
+        search = &tag[offset..];
+        if search.is_empty() {
+            break;
+        }
+    }
+    None
+}
+
+/// Every opening `<name ...>` tag in the document, as slices.
+fn find_elements<'a>(xml: &'a str, name: &str) -> Vec<&'a str> {
+    let open = format!("<{name}");
+    let mut out = Vec::new();
+    let mut rest = xml;
+
+    while let Some(index) = rest.find(&open) {
+        let after = &rest[index..];
+        let boundary = after[open.len()..].chars().next();
+        let is_element = matches!(boundary, Some(c) if c.is_whitespace() || c == '>' || c == '/');
+        let Some(end) = after.find('>') else { break };
+        if is_element {
+            out.push(&after[..end]);
+        }
+        rest = &after[end..];
+    }
+    out
+}
+
+/// The text inside the first `<name>…</name>`.
+fn element_text(xml: &str, name: &str) -> Option<String> {
+    let open = format!("<{name}");
+    let start = xml.find(&open)?;
+    let after = &xml[start..];
+    let open_end = after.find('>')?;
+    let body = &after[open_end + 1..];
+    let close = format!("</{name}>");
+    let close_at = body.find(&close)?;
+    let text = body[..close_at].trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(decode_entities(text))
+    }
+}
+
 // ------------------------------------------------------------- XHTML to blocks
 
 fn heading_level(tag: &str) -> Option<u8> {
@@ -521,6 +680,59 @@ mod tests {
         assert_eq!(decode_entities("caf&#233;"), "café");
         assert_eq!(decode_entities("&#x2014;"), "—");
         assert_eq!(decode_entities("100% &"), "100% &");
+    }
+
+    #[test]
+    fn the_spine_decides_the_reading_order_not_the_file_names() {
+        let opf = r#"
+        <package>
+          <metadata><dc:title>Test Book</dc:title></metadata>
+          <manifest>
+            <item id="b" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+            <item id="a" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+            <item id="n" href="nav.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine><itemref idref="a"/><itemref idref="b"/></spine>
+        </package>"#;
+        let package = parse_package(opf, "OEBPS/content.opf");
+        assert_eq!(package.documents, vec!["OEBPS/ch1.xhtml", "OEBPS/ch2.xhtml"]);
+        assert_eq!(package.title.as_deref(), Some("Test Book"));
+    }
+
+    #[test]
+    fn an_item_outside_the_spine_is_not_part_of_the_book() {
+        let opf = r#"
+        <package><manifest>
+            <item id="a" href="ch1.xhtml"/>
+            <item id="nav" href="nav.xhtml"/>
+          </manifest>
+          <spine><itemref idref="a"/></spine>
+        </package>"#;
+        let package = parse_package(opf, "content.opf");
+        assert_eq!(package.documents, vec!["ch1.xhtml"]);
+    }
+
+    #[test]
+    fn hrefs_resolve_against_the_package_directory() {
+        assert_eq!(resolve("OEBPS/", "ch1.xhtml"), "OEBPS/ch1.xhtml");
+        assert_eq!(resolve("OEBPS/text/", "../images/a.png"), "OEBPS/images/a.png");
+        assert_eq!(resolve("", "ch1.xhtml"), "ch1.xhtml");
+        assert_eq!(resolve("OEBPS/", "./ch1.xhtml"), "OEBPS/ch1.xhtml");
+    }
+
+    #[test]
+    fn attribute_parsing_does_not_match_a_longer_name() {
+        let tag = r#"<item idref="x" id="c1" href="a.xhtml">"#;
+        assert_eq!(attr(tag, "id").as_deref(), Some("c1"));
+        assert_eq!(attr(tag, "href").as_deref(), Some("a.xhtml"));
+        assert_eq!(attr(tag, "media-type"), None);
+    }
+
+    #[test]
+    fn element_search_does_not_confuse_item_with_itemref() {
+        let xml = r#"<item id="a"/><itemref idref="a"/><item id="b"/>"#;
+        assert_eq!(find_elements(xml, "item").len(), 2);
+        assert_eq!(find_elements(xml, "itemref").len(), 1);
     }
 
     #[test]

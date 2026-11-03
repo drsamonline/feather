@@ -104,17 +104,17 @@ fn cmd_info(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Print the selectable text of one page, exactly as a copy would produce it.
+/// Print the selectable text, exactly as a copy would produce it.
 ///
-/// This is the headless half of selection: if a pipeline can fill a text layer,
-/// `feather text` prints it, and CI can assert on it without a mouse.
+/// With no page argument it prints the whole document, page by page — which is
+/// what CI asserts on, since a short book fits one page and a long one does not.
 fn cmd_text(args: &[String]) -> Result<(), String> {
     let path = args.first().ok_or("text needs a file")?;
-    let page: usize = match args.get(1) {
-        Some(n) => n.parse().map_err(|_| "page must be a number".to_string())?,
-        None => 1,
+    let page: Option<usize> = match args.get(1) {
+        Some(n) => Some(n.parse().map_err(|_| "page must be a number".to_string())?),
+        None => None,
     };
-    if page == 0 {
+    if page == Some(0) {
         return Err("page numbers start at 1".into());
     }
 
@@ -125,15 +125,32 @@ fn cmd_text(args: &[String]) -> Result<(), String> {
     );
     let doc = open_document(bytes, format).map_err(|e| format!("open failed: {e}"))?;
 
-    let layer = doc
-        .text_layer(page - 1)
-        .ok_or_else(|| format!("the {} pipeline has no text layer", format.as_str()))?;
-    if layer.is_empty() {
-        return Err("page has no selectable text".into());
+    let pages: Vec<usize> = match page {
+        Some(n) => vec![n - 1],
+        None => (0..doc.page_count()).collect(),
+    };
+
+    let mut printed = 0;
+    for index in pages {
+        let Some(layer) = doc.text_layer(index) else {
+            if page.is_some() {
+                return Err(format!(
+                    "the {} pipeline has no text layer",
+                    format.as_str()
+                ));
+            }
+            continue;
+        };
+        if layer.is_empty() {
+            continue;
+        }
+        println!("{}", layer.text_between(0, layer.len() - 1));
+        printed += 1;
     }
 
-    let (start, end) = (0, layer.len() - 1);
-    println!("{}", layer.text_between(start, end));
+    if printed == 0 {
+        return Err("no selectable text found".into());
+    }
     Ok(())
 }
 
