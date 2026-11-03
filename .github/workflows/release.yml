@@ -20,7 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Pinned to 22.04 on purpose: a glibc-linked binary is only as
+          # portable as the oldest glibc it was built against. Building on
+          # ubuntu-latest produced a binary demanding GLIBC_2.43, which will not
+          # start on Debian 12 or Ubuntu 22.04 — the opposite of portable.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             archive: feather-linux-x86_64
             binary: feather-viewer
@@ -37,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Linux build dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev fonts-dejavu-core
