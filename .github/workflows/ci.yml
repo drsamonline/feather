@@ -65,11 +65,20 @@ jobs:
       - name: Report binary size
         shell: bash
         run: |
-          bin="target/release/feather"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then bin="$bin.exe"; fi
-          size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
-          echo "### feather binary: $((size/1024)) KB on ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "binary size: $((size/1024)) KB"
+          # The viewer is the number that matters: §8 budgets it at 20 MB.
+          ext=""
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then ext=".exe"; fi
+          for name in feather-viewer feather; do
+            bin="target/release/$name$ext"
+            [ -f "$bin" ] || continue
+            size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
+            echo "$name: $((size/1024)) KB"
+            echo "### $name: $((size/1024)) KB on ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$name" = "feather-viewer" ] && [ "$size" -gt 20971520 ]; then
+              echo "::error::$name is over the 20 MB budget in docs/plan.html §8"
+              exit 1
+            fi
+          done
 
   budget:
     name: dependency budget
