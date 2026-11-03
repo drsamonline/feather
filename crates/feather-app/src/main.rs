@@ -74,6 +74,12 @@ enum Command {
     Add { id: u32, doc: Box<dyn Document> },
     Close { id: u32 },
     Render(Job),
+    /// Search every page of a document for a word.
+    Find {
+        doc: u32,
+        needle: String,
+        generation: u64,
+    },
 }
 
 struct TileData {
@@ -100,6 +106,12 @@ enum Reply {
         doc: u32,
         page: usize,
         error: String,
+    },
+    Matches {
+        doc: u32,
+        needle: String,
+        /// `(page, word index)` for every hit, in reading order.
+        hits: Vec<(usize, usize)>,
     },
 }
 
@@ -130,6 +142,29 @@ impl Renderer {
                         }
                         Command::Close { id } => {
                             docs.remove(&id);
+                            continue;
+                        }
+                        Command::Find {
+                            doc,
+                            needle,
+                            generation,
+                        } => {
+                            // Not generation-guarded on purpose: scrolling must
+                            // not throw away a search the reader just asked for.
+                            let _ = generation;
+                            let Some(document) = docs.get(&doc) else {
+                                continue;
+                            };
+                            let mut hits = Vec::new();
+                            for page in 0..document.page_count() {
+                                if let Some(layer) = document.text_layer(page) {
+                                    for word in layer.find(&needle) {
+                                        hits.push((page, word));
+                                    }
+                                }
+                            }
+                            let _ = res_tx.send(Reply::Matches { doc, needle, hits });
+                            let _ = proxy.send_event(UserEvent::PageReady);
                             continue;
                         }
                         Command::Render(job) => job,
@@ -224,6 +259,14 @@ impl Renderer {
         let _ = self.commands.send(Command::Close { id });
     }
 
+    fn find(&self, doc: u32, needle: String, generation: u64) {
+        let _ = self.commands.send(Command::Find {
+            doc,
+            needle,
+            generation,
+        });
+    }
+
     fn request(&self, doc: u32, page: usize, scale: f32, generation: u64) {
         let _ = self.commands.send(Command::Render(Job {
             generation,
@@ -235,6 +278,15 @@ impl Renderer {
 }
 
 // ------------------------------------------------------------- single instance
+
+/// An open search bar: what has been typed, and what it found.
+#[derive(Debug, Default, Clone)]
+struct Search {
+    query: String,
+    /// `(page, word index)`, in reading order.
+    hits: Vec<(usize, usize)>,
+    current: usize,
+}
 
 /// A run of words on one page, from the anchor the drag started on to the one it
 /// ended on. Same page only for now: cross-page selection needs a document-wide
@@ -319,6 +371,7 @@ struct App {
     layers: HashMap<(u32, usize), TextLayer>,
     selection: Option<Selection>,
     dragging: bool,
+    search: Option<Search>,
     /// The last thing that went wrong, shown in the window rather than on a
     /// stderr nobody sees when the app is launched from a desktop launcher.
     status: Option<String>,
@@ -346,6 +399,7 @@ impl App {
             in_flight: HashSet::new(),
             dims: HashMap::new(),
             layers: HashMap::new(),
+            search: None,
             selection: None,
             dragging: false,
             status: None,
@@ -515,6 +569,20 @@ impl App {
                             .insert(Tile::new(key, tile.width, tile.height, tile.rgba));
                     }
                 }
+                Reply::Matches { doc, needle, hits } => {
+                    let still_wanted = self
+                        .search
+                        .as_ref()
+                        .map(|search| search.query == needle)
+                        .unwrap_or(false);
+                    if still_wanted && self.active_id() == Some(doc) {
+                        if let Some(search) = self.search.as_mut() {
+                            search.hits = hits;
+                            search.current = 0;
+                        }
+                        self.jump_to_match();
+                    }
+                }
                 Reply::Failed { doc, page, error } => {
                     self.in_flight.retain(|(d, p, _)| !(*d == doc && *p == page));
                     eprintln!("feather: page {} failed to render: {error}", page + 1);
@@ -627,6 +695,45 @@ impl App {
             Ok(_) => eprintln!("feather: opened {} in a new window", path.display()),
             Err(e) => eprintln!("feather: could not open a window: {e}"),
         }
+    }
+
+    /// Ask the worker to search the whole document, not just what has been drawn.
+    fn run_search(&mut self) {
+        let Some(doc) = self.active_id() else { return };
+        let Some(search) = &self.search else { return };
+        let needle = search.query.clone();
+
+        if needle.trim().is_empty() {
+            if let Some(search) = self.search.as_mut() {
+                search.hits.clear();
+                search.current = 0;
+            }
+            return;
+        }
+        self.renderer.find(doc, needle, self.generation);
+    }
+
+    fn jump_to_match(&mut self) {
+        let Some(search) = self.search.as_ref() else {
+            return;
+        };
+        let Some(&(page, word)) = search.hits.get(search.current) else {
+            return;
+        };
+        if let Some(view) = self.view_mut() {
+            view.page = page;
+            view.layout.scroll_to_page(page);
+        }
+        if let Some(doc) = self.active_id() {
+            self.selection = Some(Selection {
+                doc,
+                page,
+                anchor: word,
+                focus: word,
+            });
+        }
+        self.invalidate();
+        self.update_title();
     }
 
     fn copy_selection(&mut self) {
@@ -842,7 +949,11 @@ impl App {
                 }
             }
 
-            draw_strip(&self.session, &self.text, buf, w, h);
+            let search_bar = self
+                .search
+                .as_ref()
+                .map(|search| (search.query.as_str(), search.current, search.hits.len()));
+            draw_strip(&self.session, &self.text, buf, w, h, search_bar);
         }
 
         let _ = buffer.present();
@@ -887,7 +998,14 @@ impl App {
 }
 
 /// The one piece of permanent chrome: one chip per open document.
-fn draw_strip(session: &Session, text: &TextRenderer, buf: &mut [u32], w: u32, h: u32) {
+fn draw_strip(
+    session: &Session,
+    text: &TextRenderer,
+    buf: &mut [u32],
+    w: u32,
+    h: u32,
+    search: Option<(&str, usize, usize)>,
+) {
     fill_rect(buf, w, h, 0, 0, w as i32, STRIP_H as i32, STRIP_BG);
 
     let active = session.active_index();
@@ -936,6 +1054,60 @@ fn draw_strip(session: &Session, text: &TextRenderer, buf: &mut [u32], w: u32, h
             clip,
         );
     }
+
+    if let Some((query, current, total)) = search {
+        draw_search_bar(text, buf, w, h, query, current, total);
+    }
+}
+
+/// The search bar, right-aligned in the strip.
+fn draw_search_bar(
+    text: &TextRenderer,
+    buf: &mut [u32],
+    w: u32,
+    h: u32,
+    query: &str,
+    current: usize,
+    total: usize,
+) {
+    let width = 260.0_f32.min(w as f32 * 0.5);
+    let x = w as f32 - width;
+    fill_rect(
+        buf,
+        w,
+        h,
+        x as i32,
+        0,
+        width as i32,
+        STRIP_H as i32,
+        TAB_ACTIVE,
+    );
+
+    let label = if query.is_empty() {
+        "type to find a word".to_string()
+    } else if total == 0 {
+        format!("/{query}  none")
+    } else {
+        format!("/{query}  {}/{}", current + 1, total)
+    };
+
+    let colour = if total == 0 && !query.is_empty() {
+        ERROR
+    } else {
+        TAB_TEXT_ACTIVE
+    };
+    let line = text.elide(&label, UI_PX, width - 20.0);
+    text.draw(
+        buf,
+        w,
+        h,
+        x + 10.0,
+        20.0,
+        &line,
+        UI_PX,
+        colour,
+        (0, 0, w as i32, STRIP_H as i32),
+    );
 }
 
 /// Which chip, if any, is under this x coordinate.
@@ -1367,6 +1539,42 @@ impl ApplicationHandler<UserEvent> for App {
                 if event.state != ElementState::Pressed {
                     return;
                 }
+                // While the search bar is open it owns the keyboard: a query is
+                // text, and every shortcut would otherwise eat a letter.
+                if self.search.is_some() {
+                    match &event.logical_key {
+                        Key::Named(NamedKey::Escape) => {
+                            self.search = None;
+                            self.selection = None;
+                        }
+                        Key::Named(NamedKey::Enter) => {
+                            if let Some(search) = self.search.as_mut() {
+                                if !search.hits.is_empty() {
+                                    search.current = (search.current + 1) % search.hits.len();
+                                }
+                            }
+                            self.jump_to_match();
+                        }
+                        Key::Named(NamedKey::Backspace) => {
+                            if let Some(search) = self.search.as_mut() {
+                                search.query.pop();
+                            }
+                            self.run_search();
+                        }
+                        Key::Character(ch) => {
+                            if let Some(search) = self.search.as_mut() {
+                                search.query.push_str(ch);
+                            }
+                            self.run_search();
+                        }
+                        _ => {}
+                    }
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                    return;
+                }
+
                 let vh = self.viewport.1;
                 let mut redraw = true;
                 match &event.logical_key {
@@ -1405,6 +1613,10 @@ impl ApplicationHandler<UserEvent> for App {
                         "]" => self.switch(1),
                         "[" => self.switch(-1),
                         "w" => self.close_active(),
+                        "/" => {
+                            self.search = Some(Search::default());
+                            self.dragging = false;
+                        }
                         "c" => self.copy_selection(),
                         "n" => self.new_window(),
                         "p" => {

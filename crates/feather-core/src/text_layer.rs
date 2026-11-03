@@ -74,6 +74,24 @@ impl TextLayer {
         best.map(|(index, _)| index)
     }
 
+    /// Word indices whose text contains `needle`, case-insensitively.
+    ///
+    /// Word-level, not phrase-level: it finds a term wherever it appears, and
+    /// will not match a phrase that spans two words. That is a real limit and
+    /// the search bar says "word" rather than pretending otherwise.
+    pub fn find(&self, needle: &str) -> Vec<usize> {
+        let needle = needle.trim().to_lowercase();
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        self.words
+            .iter()
+            .enumerate()
+            .filter(|(_, word)| word.text.to_lowercase().contains(&needle))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
     /// The selected text between two word indices, inclusive.
     ///
     /// A new line wherever the vertical position changes, so a copied paragraph
@@ -146,6 +164,15 @@ mod tests {
     #[test]
     fn indices_past_the_end_are_clamped() {
         assert_eq!(layer().text_between(2, 99), "brown\nfox");
+    }
+
+    #[test]
+    fn search_is_case_insensitive_and_word_level() {
+        let l = layer();
+        assert_eq!(l.find("QUICK"), vec![1]);
+        assert_eq!(l.find("o"), vec![2, 3]);
+        assert!(l.find("").is_empty());
+        assert!(l.find("zebra").is_empty());
     }
 
     #[test]

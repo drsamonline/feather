@@ -18,6 +18,7 @@ USAGE:
     feather info <file>
     feather render <file> [page] [-o out.png] [-s scale]
     feather text <file> [page]
+    feather find <file> <word>
 
 ARGS:
     <file>      document to open
@@ -40,6 +41,7 @@ fn main() -> ExitCode {
         "info" => cmd_info(&args[1..]),
         "render" => cmd_render(&args[1..]),
         "text" => cmd_text(&args[1..]),
+        "find" => cmd_find(&args[1..]),
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             Ok(())
@@ -151,6 +153,41 @@ fn cmd_text(args: &[String]) -> Result<(), String> {
     if printed == 0 {
         return Err("no selectable text found".into());
     }
+    Ok(())
+}
+
+/// Search every page for a word and print the hits.
+///
+/// The headless half of the search bar: same text layers, same matcher, no
+/// window. If this finds nothing, the bar would have found nothing either.
+fn cmd_find(args: &[String]) -> Result<(), String> {
+    let path = args.first().ok_or("find needs a file")?;
+    let needle = args.get(1).ok_or("find needs a word")?.clone();
+
+    let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+    let format = detect(
+        &bytes,
+        std::path::Path::new(path).extension().and_then(|e| e.to_str()),
+    );
+    let doc = open_document(bytes, format).map_err(|e| format!("open failed: {e}"))?;
+
+    let mut total = 0;
+    for page in 0..doc.page_count() {
+        let Some(layer) = doc.text_layer(page) else {
+            continue;
+        };
+        for word in layer.find(&needle) {
+            if let Some(found) = layer.words.get(word) {
+                println!("page {} — {}", page + 1, found.text);
+                total += 1;
+            }
+        }
+    }
+
+    if total == 0 {
+        return Err(format!("no matches for {needle:?}"));
+    }
+    eprintln!("{total} matches");
     Ok(())
 }
 

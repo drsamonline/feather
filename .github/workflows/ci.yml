@@ -101,6 +101,14 @@ jobs:
             *"Contents"*) echo "::error::navigation leaked into the book"; exit 1 ;;
           esac
 
+          # Search, headlessly: same text layers and same matcher as the bar.
+          hits=$(cargo run --release -p feather-cli -- find tests/fixtures/book.epub chapter 2>&1)
+          echo "$hits"
+          case "$hits" in
+            *"2 matches"*) ;;
+            *) echo "::error::search did not find both chapter headings"; exit 1 ;;
+          esac
+
       - name: Report binary size
         shell: bash
         run: |

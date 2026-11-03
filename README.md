@@ -80,6 +80,7 @@ cargo run --release -p feather-app -- some.pdf
 | `n` | open this document in a window of its own |
 | drag over text | select it (EPUB today) |
 | `c` | copy the selection |
+| `/` | search the document · `Enter` next · `Esc` closes |
 | `p` | pin or unpin the current tab |
 | `w` | close the current tab (refused if pinned) |
 | `Esc` `q` | quit |
