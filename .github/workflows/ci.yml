@@ -30,7 +30,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev fonts-dejavu-core
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -102,11 +102,13 @@ jobs:
           esac
 
           # Search, headlessly: same text layers and same matcher as the bar.
+          # The fixture says "chapter" three times: two headings and one in prose.
+          # If that number changes, the fixture changed — the test should say so.
           hits=$(cargo run --release -p feather-cli -- find tests/fixtures/book.epub chapter 2>&1)
           echo "$hits"
           case "$hits" in
-            *"2 matches"*) ;;
-            *) echo "::error::search did not find both chapter headings"; exit 1 ;;
+            *"3 matches"*) ;;
+            *) echo "::error::search found the wrong number of hits"; exit 1 ;;
           esac
 
       - name: Report binary size
