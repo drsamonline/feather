@@ -23,7 +23,14 @@ impl TextRenderer {
                 families: &[fontdb::Family::SansSerif],
                 ..fontdb::Query::default()
             };
-            let id = db.query(&query)?;
+            // Ask for the generic sans family first; if the system has no
+            // mapping for it, fall back to any face at all. A viewer with the
+            // wrong typeface is fine; a viewer with no glyphs is broken, and
+            // some minimal environments (CI images, containers) have fonts but
+            // no generic-family metadata to resolve against.
+            let id = db
+                .query(&query)
+                .or_else(|| db.faces().next().map(|face| face.id))?;
             let (data, index) = db.with_face_data(id, |data, index| (data.to_vec(), index))?;
             fontdue::Font::from_bytes(
                 data,
