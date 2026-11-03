@@ -104,6 +104,15 @@ pub struct ComicDocument {
 
 impl ComicDocument {
     pub fn from_bytes(data: Vec<u8>) -> Result<Self, DocumentError> {
+        // CBR is a RAR archive, not a zip. Say so instead of letting it fail as
+        // "not a readable archive" — and do not advertise it in the desktop
+        // files until a RAR decoder is actually here.
+        if data.starts_with(b"Rar!") {
+            return Err(DocumentError::Unsupported(
+                "CBR is a RAR archive; only CBZ (zip) comics are supported so far".to_string(),
+            ));
+        }
+
         let mut archive = zip::ZipArchive::new(Cursor::new(data.as_slice()))
             .map_err(|e| DocumentError::Decode(format!("not a readable archive: {e}")))?;
 

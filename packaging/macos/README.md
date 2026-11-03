@@ -25,7 +25,7 @@ The `Info.plist` fragment the bundle needs:
     <key>LSHandlerRank</key><string>Alternate</string>
     <key>CFBundleTypeExtensions</key>
     <array>
-      <string>pdf</string><string>epub</string><string>cbz</string><string>cbr</string>
+      <string>pdf</string><string>epub</string><string>cbz</string>
       <string>png</string><string>jpg</string><string>jpeg</string><string>gif</string>
       <string>webp</string><string>bmp</string><string>tif</string><string>tiff</string>
     </array>

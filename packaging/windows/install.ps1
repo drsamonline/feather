@@ -33,7 +33,7 @@ $AppName = "Feather"
 # reputation for opening a black window.
 $Extensions = @(
     ".pdf", ".epub",
-    ".cbz", ".cbr",
+    ".cbz",
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"
 )
 

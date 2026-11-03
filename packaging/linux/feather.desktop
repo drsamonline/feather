@@ -11,4 +11,4 @@ StartupNotify=true
 StartupWMClass=feather-viewer
 Categories=Office;Viewer;Graphics;
 Keywords=pdf;epub;comic;viewer;reader;
-MimeType=application/pdf;application/epub+zip;application/x-cbz;application/vnd.comicbook+zip;application/vnd.comicbook-rar;image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
+MimeType=application/pdf;application/epub+zip;application/x-cbz;application/vnd.comicbook+zip;image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
