@@ -257,14 +257,30 @@ mod tests {
         assert_eq!(s.active_index(), Some(0));
     }
 
+    fn titles(s: &Session) -> Vec<&str> {
+        s.tabs().iter().map(|t| t.title.as_str()).collect()
+    }
+
     #[test]
-    fn unpinning_returns_a_tab_to_the_unpinned_group() {
+    fn pinning_sorts_into_the_left_group_keeping_order_within_it() {
         let mut s = session_with(&["a.pdf", "b.pdf", "c.pdf"]);
+        s.set_pinned(1, true);
         s.set_pinned(2, true);
-        assert_eq!(s.tabs()[0].title, "c.pdf");
-        let c_id = s.tabs()[0].id;
+        assert_eq!(titles(&s), vec!["b.pdf", "c.pdf", "a.pdf"]);
+    }
+
+    #[test]
+    fn unpinning_moves_a_tab_to_the_front_of_the_unpinned_group() {
+        let mut s = session_with(&["a.pdf", "b.pdf", "c.pdf"]);
+        s.set_pinned(1, true);
+        s.set_pinned(2, true);
+        assert_eq!(titles(&s), vec!["b.pdf", "c.pdf", "a.pdf"]);
+
+        let b_id = s.tabs()[0].id;
         s.set_pinned(0, false);
-        assert_eq!(s.tabs()[2].id, c_id);
-        assert_eq!(s.active_tab().map(|t| t.id), Some(c_id));
+        // c is still pinned, so b lands first among the unpinned ones.
+        assert_eq!(titles(&s), vec!["c.pdf", "b.pdf", "a.pdf"]);
+        assert_eq!(s.tabs()[1].id, b_id);
+        assert_eq!(s.active_tab().map(|t| t.id), Some(b_id));
     }
 }
