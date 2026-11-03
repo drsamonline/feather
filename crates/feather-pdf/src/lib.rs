@@ -13,7 +13,8 @@ use feather_core::{Document, DocumentError, PageSize, RenderedPage};
 
 use hayro::hayro_interpret::InterpreterSettings;
 use hayro::hayro_syntax::Pdf;
-use hayro::{render, RenderCache, RenderSettings};
+use hayro::vello_cpu::color::palette::css::WHITE;
+use hayro::{render, PixmapSettings, RenderCache, RenderSettings};
 
 pub struct PdfDocument {
     pdf: Pdf,
@@ -55,19 +56,28 @@ impl Document for PdfDocument {
             .get(page)
             .ok_or(DocumentError::OutOfRange { page, count })?;
 
-        let settings = RenderSettings {
+        // 0.9 splits these: RenderSettings is about *how* to draw (interpolation,
+        // hinting, glyph caching), PixmapSettings is about *what* to draw onto.
+        let settings = RenderSettings::default();
+        let pixmap_settings = PixmapSettings {
             x_scale: scale,
             y_scale: scale,
-            ..Default::default()
+            bg_color: WHITE,
         };
         let interpreter = InterpreterSettings::default();
         // TODO(M1): hoist this cache into the struct — it is per-document work
         // that hayro can reuse across pages and zoom levels.
         let cache = RenderCache::new();
 
-        let pixmap = render(pdf_page, &cache, &interpreter, &settings);
-        let width = pixmap.width();
-        let height = pixmap.height();
+        let pixmap = render(
+            pdf_page,
+            &cache,
+            &interpreter,
+            &settings,
+            &pixmap_settings,
+        );
+        let width = pixmap.width() as u32;
+        let height = pixmap.height() as u32;
         let png = pixmap
             .into_png()
             .map_err(|e| DocumentError::Decode(format!("png encode failed: {e:?}")))?;
