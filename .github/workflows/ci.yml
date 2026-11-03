@@ -144,3 +144,48 @@ jobs:
             echo "::error::over the §8 budget of 25 external dependencies"
             exit 1
           fi
+
+  packaging:
+    name: packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux desktop entry installs, advertises the right formats, and uninstalls
+        shell: bash
+        run: |
+          prefix="$RUNNER_TEMP/prefix"
+          mkdir -p "$prefix/bin"
+          printf '#!/bin/sh\n' > "$prefix/bin/feather-viewer"
+          chmod +x "$prefix/bin/feather-viewer"
+
+          bash packaging/linux/install.sh --prefix "$prefix" --dry-run
+
+          entry="$prefix/share/applications/feather.desktop"
+          test -f "$entry" || { echo "::error::no desktop entry written"; exit 1; }
+          grep -q '^\[Desktop Entry\]' "$entry" || { echo "::error::entry has no header"; exit 1; }
+
+          for mime in application/pdf application/epub+zip application/vnd.comicbook+zip image/png; do
+            grep -q "MimeType=.*$mime" "$entry" || { echo "::error::entry does not advertise $mime"; exit 1; }
+          done
+
+          # A file association is a promise: we must not claim Office documents.
+          if grep -q 'docx\|xlsx\|pptx' "$entry"; then
+            echo "::error::entry claims an Office format the viewer cannot open"
+            exit 1
+          fi
+
+          grep -q "Exec=\"$prefix/bin/feather-viewer\" %F" "$entry" || { echo "::error::Exec does not point at the binary"; exit 1; }
+
+          bash packaging/linux/install.sh --prefix "$prefix" --uninstall --dry-run
+          test ! -f "$entry" || { echo "::error::uninstall left the entry behind"; exit 1; }
+
+      - name: Windows script parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'packaging/windows/install.ps1'),
+            [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Host "::error::$($_.Message)" }; exit 1 }
+          Write-Host "install.ps1 parses"

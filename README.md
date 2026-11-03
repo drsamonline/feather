@@ -43,9 +43,11 @@ look good" but "how long does it take to open a document and draw page one".
 | Single instance — a second launch becomes a tab, not a window | done |
 | Tab strip — labels, active chip, click to switch | done |
 | Multiple windows | next |
-| Shell integration, tray, hotkey | later (lifted from CLDR) |
+| Desktop integration — .desktop, registry, MIME candidates | done (Linux, Windows) |
+| Tray, hotkey, single-instance summon | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
-| Shell integration, tray, hotkey | later (lifted from CLDR) |
+| Desktop integration — .desktop, registry, MIME candidates | done (Linux, Windows) |
+| Tray, hotkey, single-instance summon | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
 
 ## Try it
@@ -151,6 +153,22 @@ dependency in this estate, and awkward beside a licence whose point is a
 retained attribution. hayro is Apache/MIT, pure Rust, read-only by design, and
 cross-compiles to Windows ARM64 without a second machine. The cost is that EPUB
 reflow is ours to write. §12 of the plan argues this properly.
+
+## Registering with the desktop
+
+```sh
+packaging/linux/install.sh          # ~/.local/bin + a .desktop entry
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1
+```
+
+Both register Feather as a *candidate* for the formats it can open — PDF, EPUB,
+CBZ/CBR and images — and neither seizes the default. Choosing the default is the
+user's job, in their own settings, where they can also undo it. macOS is not
+automated yet; [packaging/macos/README.md](packaging/macos/README.md) says what a
+bundle would need and why notarisation is the real blocker.
 
 ## Read the plan first
 

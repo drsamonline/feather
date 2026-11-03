@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Feather
+GenericName=Document Viewer
+Comment=A read-only document viewer that opens before you blink
+Exec="__FEATHER_BIN__" %F
+TryExec=__FEATHER_BIN__
+Terminal=false
+StartupNotify=true
+StartupWMClass=feather-viewer
+Categories=Office;Viewer;Graphics;
+Keywords=pdf;epub;comic;viewer;reader;
+MimeType=application/pdf;application/epub+zip;application/x-cbz;application/vnd.comicbook+zip;application/vnd.comicbook-rar;image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
