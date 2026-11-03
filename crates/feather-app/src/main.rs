@@ -29,7 +29,7 @@ use feather_core::{
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
@@ -44,6 +44,14 @@ const TILE_PX: u32 = 512;
 const MAX_RASTER_PIXELS: f32 = 32_000_000.0;
 /// Where a second launch hands its path to the first.
 const IPC_PORT: u16 = 51789;
+/// Height of the tab strip, in logical pixels. The one piece of permanent chrome.
+const STRIP_H: f32 = 30.0;
+const TAB_W: f32 = 150.0;
+const STRIP_BG: u32 = 0x0016_1F26;
+const TAB_ACTIVE: u32 = 0x0022_3039;
+const TAB_TEXT: u32 = 0x00C8_D4DA;
+const TAB_TEXT_ACTIVE: u32 = 0x00F2_F6F8;
+const UI_PX: f32 = 13.0;
 
 // ---------------------------------------------------------------- the worker
 
@@ -256,6 +264,158 @@ fn start_listener(proxy: EventLoopProxy<UserEvent>) {
         .ok();
 }
 
+
+// ---------------------------------------------------------------------- text
+
+/// Just enough text to label a tab.
+///
+/// fontdue rasterises glyphs; fontdb finds a face the system already has, so
+/// nothing is embedded and the binary does not grow by a megabyte of font. This
+/// is Latin-only on purpose: mapping a char to a glyph is not shaping, and
+/// Devanagari or Arabic would come out wrong. A real shaper is its own block
+/// (plan §11, R16) and pretending otherwise here would be worse than a plain
+/// label.
+struct Text {
+    font: Option<fontdue::Font>,
+}
+
+impl Text {
+    fn load() -> Self {
+        let font = (|| {
+            let mut db = fontdb::Database::new();
+            db.load_system_fonts();
+            let query = fontdb::Query {
+                families: &[fontdb::Family::SansSerif],
+                ..fontdb::Query::default()
+            };
+            let id = db.query(&query)?;
+            let (data, index) = db.with_face_data(id, |data, index| (data.to_vec(), index))?;
+            fontdue::Font::from_bytes(
+                data,
+                fontdue::FontSettings {
+                    collection_index: index,
+                    ..Default::default()
+                },
+            )
+            .ok()
+        })();
+
+        if font.is_none() {
+            eprintln!("feather: no system font found — labels will be blank");
+        }
+        Text { font }
+    }
+
+    fn measure(&self, text: &str, px: f32) -> f32 {
+        match &self.font {
+            Some(font) => text
+                .chars()
+                .map(|c| font.metrics(c, px).advance_width)
+                .sum(),
+            // Rough fallback so layout still works without a font.
+            None => text.chars().count() as f32 * px * 0.55,
+        }
+    }
+
+    /// Shorten with an ellipsis until it fits.
+    fn elide(&self, text: &str, px: f32, max_width: f32) -> String {
+        if self.measure(text, px) <= max_width {
+            return text.to_string();
+        }
+        let mut out = String::new();
+        for ch in text.chars() {
+            let mut candidate = out.clone();
+            candidate.push(ch);
+            candidate.push('…');
+            if self.measure(&candidate, px) > max_width {
+                break;
+            }
+            out.push(ch);
+        }
+        out.push('…');
+        out
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw(
+        &self,
+        buf: &mut [u32],
+        dst_w: u32,
+        dst_h: u32,
+        x: f32,
+        baseline: f32,
+        text: &str,
+        px: f32,
+        colour: u32,
+        clip: (i32, i32, i32, i32),
+    ) {
+        let Some(font) = &self.font else { return };
+        let mut pen = x;
+        for ch in text.chars() {
+            let (metrics, bitmap) = font.rasterize(ch, px);
+            let gx = pen + metrics.xmin as f32;
+            let gy = baseline - (metrics.height as f32 + metrics.ymin as f32);
+            blit_alpha(
+                buf,
+                dst_w,
+                dst_h,
+                gx.round() as i32,
+                gy.round() as i32,
+                metrics.width,
+                metrics.height,
+                &bitmap,
+                colour,
+                clip,
+            );
+            pen += metrics.advance_width;
+        }
+    }
+}
+
+/// Composite an 8-bit coverage bitmap in one colour, clipped to a rectangle.
+#[allow(clippy::too_many_arguments)]
+fn blit_alpha(
+    buf: &mut [u32],
+    dst_w: u32,
+    dst_h: u32,
+    x0: i32,
+    y0: i32,
+    w: usize,
+    h: usize,
+    coverage: &[u8],
+    colour: u32,
+    clip: (i32, i32, i32, i32),
+) {
+    let (cx0, cy0, cx1, cy1) = clip;
+    let r = (colour >> 16) & 0xff;
+    let g = (colour >> 8) & 0xff;
+    let b = colour & 0xff;
+
+    for row in 0..h {
+        let y = y0 + row as i32;
+        if y < 0 || y >= dst_h as i32 || y < cy0 || y >= cy1 {
+            continue;
+        }
+        let base = (y as u32 * dst_w) as usize;
+        for col in 0..w {
+            let x = x0 + col as i32;
+            if x < 0 || x >= dst_w as i32 || x < cx0 || x >= cx1 {
+                continue;
+            }
+            let a = coverage[row * w + col] as u32;
+            if a == 0 {
+                continue;
+            }
+            let dst = buf[base + x as usize];
+            let dr = (dst >> 16) & 0xff;
+            let dg = (dst >> 8) & 0xff;
+            let db = dst & 0xff;
+            let mix = |f: u32, d: u32| ((f * a + d * (255 - a)) / 255) & 0xff;
+            buf[base + x as usize] = (mix(r, dr) << 16) | (mix(g, dg) << 8) | mix(b, db);
+        }
+    }
+}
+
 // ------------------------------------------------------------------- the view
 
 /// Per-tab reading position, so switching tabs does not lose your place.
@@ -272,7 +432,12 @@ struct App {
     dims: HashMap<(u32, usize, u8), (u32, u32)>,
     renderer: Renderer,
     generation: u64,
+    /// The content area: the window minus the tab strip.
     viewport: (f32, f32),
+    /// The whole window, in logical pixels.
+    window_size: (f32, f32),
+    text: Text,
+    cursor: (f32, f32),
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
 }
@@ -287,9 +452,25 @@ impl App {
             dims: HashMap::new(),
             renderer,
             generation: 0,
-            viewport: (900.0, 1100.0),
+            viewport: (900.0, 1100.0 - STRIP_H),
+            window_size: (900.0, 1100.0),
+            text: Text::load(),
+            cursor: (0.0, 0.0),
             window: None,
             surface: None,
+        }
+    }
+
+    /// The window changed size: keep the content area and the tab strip apart.
+    fn set_window_size(&mut self, width: f32, height: f32) {
+        self.window_size = (width.max(1.0), height.max(1.0));
+        self.viewport = (
+            self.window_size.0,
+            (self.window_size.1 - STRIP_H).max(1.0),
+        );
+        let viewport = self.viewport;
+        if let Some(view) = self.view_mut() {
+            view.layout.set_viewport(viewport.0, viewport.1);
         }
     }
 
@@ -519,10 +700,11 @@ impl App {
         });
 
         let (vw, vh) = self.viewport;
+        let (ww, wh) = self.window_size;
         let Some(surface) = self.surface.as_mut() else {
             return;
         };
-        let (w, h) = (vw.max(1.0) as u32, vh.max(1.0) as u32);
+        let (w, h) = (ww.max(1.0) as u32, wh.max(1.0) as u32);
         let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
             return;
         };
@@ -550,7 +732,7 @@ impl App {
                     let page_w = size.width * zoom;
                     let page_h = size.height * zoom;
                     let px0 = (vw - page_w) / 2.0;
-                    let py0 = view.layout.page_top(page) - view.layout.scroll_y();
+                    let py0 = STRIP_H + view.layout.page_top(page) - view.layout.scroll_y();
 
                     match self.dims.get(&(doc, page, level)).copied() {
                         Some((raster_w, raster_h)) => {
@@ -606,6 +788,8 @@ impl App {
                     }
                 }
             }
+
+            draw_strip(&self.session, &self.text, buf, w, h);
         }
 
         let _ = buffer.present();
@@ -645,6 +829,71 @@ impl App {
         if let Some(view) = self.view_mut() {
             view.layout.scroll_by(dy);
         }
+    }
+}
+
+/// The one piece of permanent chrome: one chip per open document.
+fn draw_strip(session: &Session, text: &Text, buf: &mut [u32], w: u32, h: u32) {
+    fill_rect(buf, w, h, 0, 0, w as i32, STRIP_H as i32, STRIP_BG);
+
+    let active = session.active_index();
+    let clip = (0, 0, w as i32, STRIP_H as i32);
+
+    for (index, tab) in session.tabs().iter().enumerate() {
+        let x = index as f32 * TAB_W;
+        if x >= w as f32 {
+            break;
+        }
+        if Some(index) == active {
+            fill_rect(buf, w, h, x as i32, 0, TAB_W as i32, STRIP_H as i32, TAB_ACTIVE);
+        }
+        // A hairline between chips, so they read as separate at a glance.
+        fill_rect(
+            buf,
+            w,
+            h,
+            (x + TAB_W - 1.0) as i32,
+            0,
+            1,
+            STRIP_H as i32,
+            STRIP_BG,
+        );
+
+        let label = if tab.pinned {
+            format!("* {}", tab.title)
+        } else {
+            tab.title.clone()
+        };
+        let label = text.elide(&label, UI_PX, TAB_W - 16.0);
+        let colour = if Some(index) == active {
+            TAB_TEXT_ACTIVE
+        } else {
+            TAB_TEXT
+        };
+        text.draw(
+            buf,
+            w,
+            h,
+            x + 8.0,
+            20.0,
+            &label,
+            UI_PX,
+            colour,
+            clip,
+        );
+    }
+}
+
+/// Which chip, if any, is under this x coordinate.
+fn tab_at(session: &Session, x: f32) -> Option<usize> {
+    if x < 0.0 {
+        return None;
+    }
+    let index = (x / TAB_W).floor() as usize;
+    if index < session.len() {
+        Some(index)
+    } else {
+        None
     }
 }
 
@@ -790,14 +1039,16 @@ impl ApplicationHandler<UserEvent> for App {
 
         let size = window.inner_size();
         let scale = window.scale_factor() as f32;
-        self.viewport = (size.width as f32 / scale, size.height as f32 / scale);
-        let viewport = self.viewport;
-        if let Some(view) = self.view_mut() {
-            view.layout.set_viewport(viewport.0, viewport.1);
-        }
+        self.set_window_size(size.width as f32 / scale, size.height as f32 / scale);
 
         self.surface = Some(surface);
         self.window = Some(window);
+
+        // The document was opened before the window existed, so its fit-to-width
+        // zoom used the default viewport. Fit again now that the real size is known.
+        if self.active_id().is_some() {
+            self.fit_width();
+        }
         self.update_title();
 
         if let Some(w) = &self.window {
@@ -828,11 +1079,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::Resized(size) => {
                 if let Some(window) = &self.window {
                     let scale = window.scale_factor() as f32;
-                    self.viewport = (size.width as f32 / scale, size.height as f32 / scale);
-                    let viewport = self.viewport;
-                    if let Some(view) = self.view_mut() {
-                        view.layout.set_viewport(viewport.0, viewport.1);
-                    }
+                    self.set_window_size(size.width as f32 / scale, size.height as f32 / scale);
                 }
                 if let Some(w) = &self.window {
                     w.request_redraw();
@@ -840,6 +1087,32 @@ impl ApplicationHandler<UserEvent> for App {
             }
 
             WindowEvent::RedrawRequested => self.draw(),
+
+            WindowEvent::CursorMoved { position, .. } => {
+                let scale = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.scale_factor() as f32)
+                    .unwrap_or(1.0);
+                self.cursor = (position.x as f32 / scale, position.y as f32 / scale);
+            }
+
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                if self.cursor.1 < STRIP_H {
+                    if let Some(index) = tab_at(&self.session, self.cursor.0) {
+                        self.session.activate(index);
+                        self.invalidate();
+                        self.update_title();
+                        if let Some(w) = &self.window {
+                            w.request_redraw();
+                        }
+                    }
+                }
+            }
 
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta {

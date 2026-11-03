@@ -38,7 +38,7 @@ look good" but "how long does it take to open a document and draw page one".
 | Pages as a grid of tiles, with a raster ceiling for huge pages | done |
 | Session model — tabs, pinning, dedupe, per-tab reading position | done, tested |
 | Single instance — a second launch becomes a tab, not a window | done |
-| Tab strip you can see and click | next (needs a text stack) |
+| Tab strip — labels, active chip, click to switch | done |
 | Multiple windows | next |
 | Shell integration, tray, hotkey | later (lifted from CLDR) |
 | EPUB, images, comics, Office read mode | later |
@@ -67,6 +67,7 @@ cargo run --release -p feather-app -- some.pdf
 | `1` | fit to width |
 | `Home` `End` | first / last page |
 | `]` `[` | next / previous tab |
+| click a tab | switch to it |
 | `p` | pin or unpin the current tab |
 | `w` | close the current tab (refused if pinned) |
 | `Esc` `q` | quit |
@@ -77,6 +78,11 @@ The window never rasterises. A worker thread owns the document and draws pages
 into a byte-budgeted cache; the window only blits what is already there, so a
 400-page PDF scrolls without freezing and a fast flick drops the pages it has
 already left behind instead of queueing them.
+
+The tab strip is the only permanent chrome: one chip per document, the active
+one lit, a pin marked with `*`. Labels are drawn with the system's own sans
+face — fontdb finds it, fontdue rasterises it — so no font is embedded and the
+binary does not grow. Latin only for now; a real shaper is its own block.
 
 Open a second file while the viewer is running and it becomes a tab in the
 running window rather than a second window — the first launch owns a loopback

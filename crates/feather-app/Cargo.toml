@@ -18,3 +18,5 @@ feather-pdf = { path = "../feather-pdf" }
 winit = "0.30"
 softbuffer = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
+fontdue = "0.9"
+fontdb = "0.23"
