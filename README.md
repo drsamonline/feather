@@ -51,6 +51,10 @@ read 1.2 ms · open 0.4 ms · render 38.1 ms · total 39.7 ms
 page 1 of 412 · 1190×1684 px at 2.00x · 214633 bytes png → page1.png
 ```
 
+A one-page fixture lives at `tests/fixtures/minimal.pdf`, and CI renders it on
+every push — so the first green build is proof that the engine works on Windows,
+Linux and macOS, not a claim in a README.
+
 Those four numbers are the project. §8 of the plan sets the ceiling: first page
 of a 50 MB PDF in under 150 ms, binary under 20 MB, cold start under 300 ms. CI
 prints the binary size on every push so the number cannot drift quietly.
