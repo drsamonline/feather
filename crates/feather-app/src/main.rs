@@ -1102,7 +1102,7 @@ fn draw_panel(text: &TextRenderer, buf: &mut [u32], w: u32, h: u32, status: Opti
         Some(message) => ("Could not open that document", message, ERROR),
         None => (
             "Nothing open",
-            "Pass a file: feather-viewer file.pdf — or drop one on the window once drag and drop lands.",
+            "Pass a file: feather-viewer file.pdf — or drop one on this window.",
             MUTED,
         ),
     };
@@ -1331,6 +1331,26 @@ impl ApplicationHandler<UserEvent> for App {
                     self.dragging = false;
                 }
             }
+
+            // Dropping a file on the window opens it. Several files open as
+            // several tabs, which is what a multi-select drag should do.
+            WindowEvent::DroppedFile(path) => {
+                self.open_path(path);
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+
+            WindowEvent::HoveredFile(path) => {
+                // A quiet affordance: the title says what is about to happen.
+                if let Some(w) = &self.window {
+                    if let Some(name) = path.file_name() {
+                        w.set_title(&format!("Drop to open {}", name.to_string_lossy()));
+                    }
+                }
+            }
+
+            WindowEvent::HoveredFileCancelled => self.update_title(),
 
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta {

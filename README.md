@@ -74,6 +74,7 @@ cargo run --release -p feather-app -- some.pdf
 | `1` | fit to width |
 | `Home` `End` | first / last page |
 | `]` `[` | next / previous tab |
+| drop a file on the window | open it (several files → several tabs) |
 | click a tab | switch to it |
 | `Ctrl+Alt+F` (anywhere) | summon the window |
 | `n` | open this document in a window of its own |
