@@ -506,6 +506,18 @@ impl App {
         self.pump();
         self.request_visible();
 
+        // Everything that needs `&self` is resolved before the surface is
+        // mutably borrowed; after that only individual fields are touched.
+        let doc = self.active_id();
+        let zoom = doc
+            .and_then(|d| self.views.get(&d).map(|v| v.layout.zoom()))
+            .unwrap_or(1.0);
+        let visible = doc.and_then(|d| {
+            self.views
+                .get(&d)
+                .map(|v| (d, v.layout.visible_range()))
+        });
+
         let (vw, vh) = self.viewport;
         let Some(surface) = self.surface.as_mut() else {
             return;
@@ -520,13 +532,6 @@ impl App {
         let Ok(mut buffer) = surface.buffer_mut() else {
             return;
         };
-
-        let doc = self.active_id();
-        let visible = doc
-            .and_then(|d| self.views.get(&d).map(|v| (d, v.layout.visible_range())));
-        let zoom = doc
-            .and_then(|d| self.views.get(&d).map(|v| v.layout.zoom()))
-            .unwrap_or(1.0);
 
         {
             let buf: &mut [u32] = &mut buffer;
@@ -786,8 +791,9 @@ impl ApplicationHandler<UserEvent> for App {
         let size = window.inner_size();
         let scale = window.scale_factor() as f32;
         self.viewport = (size.width as f32 / scale, size.height as f32 / scale);
+        let viewport = self.viewport;
         if let Some(view) = self.view_mut() {
-            view.layout.set_viewport(self.viewport.0, self.viewport.1);
+            view.layout.set_viewport(viewport.0, viewport.1);
         }
 
         self.surface = Some(surface);

@@ -171,7 +171,6 @@ impl Layout {
         let mut last = 0;
         let mut y = 0.0;
         for (i, page) in self.pages.iter().enumerate() {
-            let page_top = y;
             let page_bottom = y + page.height * self.zoom;
             if page_bottom > top {
                 first = first.min(i);
