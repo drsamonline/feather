@@ -647,7 +647,9 @@ fn extract_blocks(html: &str) -> Vec<Block> {
             .unwrap_or("")
             .to_ascii_lowercase();
 
-        if name == "script" || name == "style" {
+        // `head` is skipped whole: its `<title>` is metadata, not prose, and it
+        // was ending up as a stray paragraph in the middle of the book.
+        if name == "script" || name == "style" || name == "head" {
             skipping = !closing;
             if closing {
                 buf.clear();
@@ -778,6 +780,14 @@ mod tests {
         assert_eq!(blocks[1].text, "First para.");
         assert_eq!(blocks[2].text, "Second");
         assert_eq!(blocks[3].text, "para.");
+    }
+
+    #[test]
+    fn a_document_title_is_not_part_of_the_book() {
+        let html = "<html><head><title>Two</title></head><body><p>real text</p></body></html>";
+        let blocks = extract_blocks(html);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].text, "real text");
     }
 
     #[test]
