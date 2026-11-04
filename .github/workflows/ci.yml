@@ -168,6 +168,23 @@ jobs:
           path: shots/*.png
           if-no-files-found: error
 
+      - name: Does the landing page still quote this size?
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          size=$(stat -c%s target/release/feather-viewer)
+          mb=$(awk "BEGIN { printf \"%.1f\", $size/1048576 }")
+          stated=$(grep -oE '~[0-9.]+ MB' docs/index.html | head -1 | tr -dc '0-9.')
+          echo "measured ${mb} MB, landing page says ${stated} MB"
+          awk -v m="$mb" -v s="$stated" 'BEGIN {
+            if (s == "") { exit 0 }
+            diff = (m > s) ? m - s : s - m
+            if (diff / s > 0.15) { exit 1 }
+          }' || {
+            echo "::error::the landing page quotes ${stated} MB; the binary is ${mb} MB"
+            exit 1
+          }
+
       - name: Report binary size
         shell: bash
         run: |
@@ -214,6 +231,15 @@ jobs:
           ' $(find crates -name Cargo.toml | sort) | sort -u | wc -l)
           echo "external dependencies: $total"
           echo "### external dependencies: $total / 25" >> "$GITHUB_STEP_SUMMARY"
+
+          # The landing page quotes this number. A stale number on a page that
+          # claims to be checked on every push is worse than no number at all.
+          stated=$(grep -oE '[0-9]+ crates' docs/index.html | head -1 | grep -oE '[0-9]+')
+          if [ -n "$stated" ] && [ "$stated" != "$total" ]; then
+            echo "::error::docs/index.html says $stated crates; the workspace has $total"
+            exit 1
+          fi
+          echo "landing page agrees: $stated crates"
           if [ "$total" -gt 25 ]; then
             echo "::error::over the §8 budget of 25 external dependencies"
             exit 1

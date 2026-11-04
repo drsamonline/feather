@@ -21,6 +21,10 @@ platforms.
   headless screenshots of the real interface
 - Checksummed release archives for Linux x86-64, Windows x86-64, macOS arm64
 
+Since v0.1.0 was cut: CBR opens in-process through the UnRAR decoder, so no
+helper needs installing; the format router no longer mistakes a RAR header for
+text; and the numbers quoted on the landing page are now checked in CI.
+
 ## v0.2 — text that is not Latin
 
 **Shaping.** Replace `fontdue` with `skrifa` + `harfrust` + `unicode-bidi`
@@ -72,8 +76,10 @@ and renderer. Mechanical, but a refactor of every method above it.
 - **EPUB images and light CSS** — currently text only.
 - **Phrase search** — the matcher is word-level.
 - **Multi-page selection** — needs a document-wide text order.
-- **`.cbr` in the desktop MIME list** — one line, but it promises a helper that
-  may not be installed.
+- **`.cbr` in the desktop MIME list** — one line, now that no helper is needed.
+- **Lazy RAR extraction** — a comic is fully unpacked on open, so a 25 MB CBR
+  costs ~1.5 s before page one appears. The fix is unrar's single-file API:
+  open once, pull the page asked for.
 
 ## Housekeeping, not features
 
@@ -82,6 +88,8 @@ and renderer. Mechanical, but a refactor of every method above it.
   Until then both platforms warn on first run.
 - A pixel-diff baseline for the CI screenshots, if the size check proves too
   coarse.
+- Keep the documentation honest automatically — the dependency count and the
+  quoted binary size are already asserted against the landing page.
 
 ## Not planned
 

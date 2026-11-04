@@ -137,7 +137,8 @@ crates/
   feather-core/   Document trait · format router · tile cache · scroll model
                   · session                                  (zero dependencies)
   feather-pdf/    PDF pipeline on hayro                          (pure Rust)
-  feather-image/  still images, CBZ and CBR (the last through UnRAR C++)
+  feather-image/  still images, CBZ and CBR — the last through UnRAR C++, the
+                  only C++ in the tree
   feather-text/   glyph rasterisation, shared by the window and the pipelines
   feather-epub/   reflowable text: strip, wrap, paginate (EPUB, Markdown, txt)
   feather-cli/    the spike: info + render, with timings
@@ -161,6 +162,12 @@ dependency in this estate, and awkward beside a licence whose point is a
 retained attribution. hayro is Apache/MIT, pure Rust, read-only by design, and
 cross-compiles to Windows ARM64 without a second machine. The cost is that EPUB
 reflow is ours to write. §12 of the plan argues this properly.
+
+**One exception, stated rather than buried:** `feather-image` compiles RARLAB's
+UnRAR C++ so that CBR opens without a helper installed. That is the only C in the
+tree, it means the workspace is no longer pure Rust, and it carries a non-OSI
+licence — see [LICENSE-UNRAR](LICENSE-UNRAR) and
+[docs/decisions.md](docs/decisions.md).
 
 ## Picking up where you left off
 
