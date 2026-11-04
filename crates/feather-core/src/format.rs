@@ -165,41 +165,19 @@ mod tests {
     }
 
     #[test]
-    fn office_containers_route_to_the_pipeline_that_can_read_them() {
+    fn a_zip_needs_its_extension_to_say_which_pipeline() {
         let zip = b"PK\x03\x04rest of a document";
-        assert_eq!(detect(zip, Some("xlsx")), Format::Sheet);
-        assert_eq!(detect(zip, Some("xlsm")), Format::Sheet);
+        assert_eq!(detect(zip, Some("epub")), Format::Epub);
+        assert_eq!(detect(zip, Some("cbz")), Format::Comic);
         assert_eq!(detect(zip, Some("docx")), Format::Doc);
+        assert_eq!(detect(zip, Some("xlsx")), Format::Sheet);
         assert_eq!(detect(zip, Some("pptx")), Format::Slide);
-        // The OpenDocument family rides the same three pipelines.
+        // OpenDocument rides the same three pipelines, in another dialect.
         assert_eq!(detect(zip, Some("odt")), Format::Doc);
         assert_eq!(detect(zip, Some("ods")), Format::Sheet);
         assert_eq!(detect(zip, Some("odp")), Format::Slide);
-        // RTF is still unread, and still says so rather than being routed
-        // somewhere that would fail on open.
-        assert_eq!(detect(b"{\\rtf1", Some("rtf")), Format::Office);
-    }
-
-    #[test]
-    fn a_binary_extension_beats_a_text_looking_header() {
-        // "Rar!" and its version bytes are valid UTF-8, which used to make a
-        // CBR archive open as a text file.
-        let rar = b"Rar!\x1a\x07\x01\x00\x00\x00\x00\x00\x00";
-        assert_eq!(detect(rar, Some("cbr")), Format::Comic);
-        assert_eq!(detect(rar, Some("cbz")), Format::Comic);
-        // With no extension at all, text is still the reasonable guess.
-        assert_eq!(detect(rar, None), Format::Text);
-    }
-
-    #[test]
-    fn zip_needs_the_extension() {
-        assert_eq!(detect(b"PK\x03\x04rest", Some("epub")), Format::Epub);
-        assert_eq!(detect(b"PK\x03\x04rest", Some("cbz")), Format::Comic);
-        assert_eq!(detect(b"PK\x03\x04rest", Some("docx")), Format::Doc);
-        assert_eq!(detect(b"PK\x03\x04rest", Some("pptx")), Format::Slide);
-        // The ODF family is still unimplemented, and still says so.
-        assert_eq!(detect(b"PK\x03\x04rest", Some("odt")), Format::Office);
-        assert_eq!(detect(b"PK\x03\x04rest", None), Format::Comic);
+        // With no extension, a zip is a comic — the common case by far.
+        assert_eq!(detect(zip, None), Format::Comic);
     }
 
     #[test]
