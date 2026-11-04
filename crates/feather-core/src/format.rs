@@ -160,12 +160,16 @@ mod tests {
     }
 
     #[test]
-    fn a_workbook_is_a_sheet_not_a_generic_office_file() {
-        let zip = b"PK\x03\x04rest of a workbook";
+    fn office_containers_route_to_the_pipeline_that_can_read_them() {
+        let zip = b"PK\x03\x04rest of a document";
         assert_eq!(detect(zip, Some("xlsx")), Format::Sheet);
         assert_eq!(detect(zip, Some("xlsm")), Format::Sheet);
         assert_eq!(detect(zip, Some("docx")), Format::Doc);
-        assert_eq!(detect(zip, Some("pptx")), Format::Office);
+        assert_eq!(detect(zip, Some("pptx")), Format::Slide);
+        // The ODF family still has no pipeline, and still says so rather than
+        // being quietly routed somewhere that would fail on open.
+        assert_eq!(detect(zip, Some("odt")), Format::Office);
+        assert_eq!(detect(zip, Some("ods")), Format::Office);
     }
 
     #[test]
