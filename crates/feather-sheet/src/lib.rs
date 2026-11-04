@@ -379,14 +379,6 @@ fn strip_tags(inner: &str) -> String {
     unescape(&out)
 }
 
-fn unescape(text: &str) -> String {
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
-}
-
 fn read_part(archive: &mut zip::ZipArchive<Cursor<Vec<u8>>>, name: &str) -> Option<String> {
     let mut file = archive.by_name(name).ok()?;
     let mut out = String::new();
