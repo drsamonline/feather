@@ -22,6 +22,8 @@ pub enum Format {
     Sheet,
     /// DOCX — read as blocks and reflowed, not laid out page-for-page.
     Doc,
+    /// PPTX — slides, drawn at the coordinates the file already carries.
+    Slide,
     /// DOCX, PPTX, ODT, ODS, ODP — still unimplemented, and still not claimed.
     Office,
     Unknown,
@@ -39,6 +41,7 @@ impl Format {
             Format::Text => "text",
             Format::Sheet => "sheet",
             Format::Doc => "doc",
+            Format::Slide => "slide",
             Format::Office => "office",
             Format::Unknown => "unknown",
         }
@@ -54,6 +57,7 @@ impl Format {
                 | Format::Xps
                 | Format::Sheet
                 | Format::Doc
+                | Format::Slide
                 | Format::Office
         )
     }
@@ -73,7 +77,8 @@ impl Format {
             | "cpp" | "hpp" | "java" | "sh" | "sql" => Format::Text,
             "xlsx" | "xlsm" => Format::Sheet,
             "docx" => Format::Doc,
-            "pptx" | "odt" | "ods" | "odp" | "rtf" => Format::Office,
+            "pptx" => Format::Slide,
+            "odt" | "ods" | "odp" | "rtf" => Format::Office,
             _ => Format::Unknown,
         }
     }
@@ -179,8 +184,9 @@ mod tests {
         assert_eq!(detect(b"PK\x03\x04rest", Some("epub")), Format::Epub);
         assert_eq!(detect(b"PK\x03\x04rest", Some("cbz")), Format::Comic);
         assert_eq!(detect(b"PK\x03\x04rest", Some("docx")), Format::Doc);
-        // PPTX and the ODF family are still unimplemented, and still say so.
-        assert_eq!(detect(b"PK\x03\x04rest", Some("pptx")), Format::Office);
+        assert_eq!(detect(b"PK\x03\x04rest", Some("pptx")), Format::Slide);
+        // The ODF family is still unimplemented, and still says so.
+        assert_eq!(detect(b"PK\x03\x04rest", Some("odt")), Format::Office);
         assert_eq!(detect(b"PK\x03\x04rest", None), Format::Comic);
     }
 

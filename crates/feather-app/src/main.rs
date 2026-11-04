@@ -1283,6 +1283,9 @@ fn open_document(bytes: Vec<u8>, format: Format) -> Result<Box<dyn Document>, St
         Format::Doc => feather_epub::DocxDocument::from_bytes(bytes)
             .map(|d| Box::new(d) as Box<dyn Document>)
             .map_err(|e| e.to_string()),
+        Format::Slide => feather_slide::SlideDocument::from_bytes(bytes)
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .map_err(|e| e.to_string()),
         other => Err(format!(
             "the {} pipeline is not implemented yet",
             other.as_str()

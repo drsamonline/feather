@@ -115,6 +115,21 @@ jobs:
             *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
           esac
 
+          # Presentations: slides carry their own coordinates, so this is a
+          # draw-where-the-file-says job rather than a layout engine.
+          cargo run --release -p feather-cli -- info tests/fixtures/deck.pptx
+          cargo run --release -p feather-cli -- render tests/fixtures/deck.pptx 2 -o "$RUNNER_TEMP/slide.png"
+          check_png "$RUNNER_TEMP/slide.png"
+          slide_text=$(cargo run --release -p feather-cli -- text tests/fixtures/deck.pptx)
+          case "$slide_text" in
+            *"Feather opens decks"*) ;;
+            *) echo "::error::the deck lost its title"; exit 1 ;;
+          esac
+          case "$slide_text" in
+            *"A second slide"*) ;;
+            *) echo "::error::the second slide is missing"; exit 1 ;;
+          esac
+
           # Word files: paragraphs and heading styles, through the same reflow
           # engine as a book.
           cargo run --release -p feather-cli -- info tests/fixtures/letter.docx

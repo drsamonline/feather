@@ -1,0 +1,12 @@
+[package]
+name = "feather-slide"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Presentation pipeline: PPTX slides drawn at their own coordinates"
+
+[dependencies]
+feather-core = { path = "../feather-core" }
+feather-text = { path = "../feather-text" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
