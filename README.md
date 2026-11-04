@@ -4,6 +4,21 @@
 
 # Feather
 
+<p align="center">
+  <img src="docs/assets/badge-tests.svg" alt="tests">
+  <img src="docs/assets/badge-build.svg" alt="build">
+  <img src="docs/assets/badge-licence.svg" alt="licence">
+  <img src="docs/assets/badge-deps.svg" alt="dependencies">
+  <img src="docs/assets/badge-live.svg" alt="platforms">
+  <img src="docs/assets/badge-offline.svg" alt="offline">
+</p>
+
+<!-- shot:start -->
+
+![Feather opening a comic](docs/assets/app-comic.png)
+
+<!-- shot:end -->
+
 **A read-only document viewer that opens before you blink.**
 
 Small, portable, cross-platform, summoned by a keystroke. No editing, no
@@ -206,6 +221,18 @@ rather than a dependency swap, and it is not in this milestone.
 
 What is released, what is next, and what each thing is waiting on:
 [ROADMAP.md](ROADMAP.md).
+
+
+## Support
+
+| | |
+|---|---|
+| UPI (India) | `drsohilboi@ybl` — payee Dr. Sohil Momin |
+| Ko-fi | https://ko-fi.com/matneo |
+| PayPal | https://paypal.me/drsohilmomin?locale.x=en_GB&country.x=IN |
+| Books | https://www.amazon.com/stores/author/B08ZT331LY/allbooks?ccs_id=aed72b9f-71d9-41dc-adee-e9368a317acc |
+| Everything else | https://drsamonline.github.io/ |
+| Email | sohilmomin2000@gmail.com |
 
 ## Decisions
 
