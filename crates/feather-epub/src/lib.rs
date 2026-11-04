@@ -924,8 +924,8 @@ impl Document for DocxDocument {
         self.reflow.page_count()
     }
 
-    fn page_size(&self, page: usize) -> Option<PageSize> {
-        self.reflow.page_size(page)
+    fn page_size(&self, _page: usize) -> Option<PageSize> {
+        Some(self.reflow.page_size())
     }
 
     fn render(&self, page: usize, scale: f32) -> Result<RenderedPage, DocumentError> {
@@ -943,7 +943,7 @@ impl Document for DocxDocument {
 
 /// Paragraphs from `word/document.xml`.
 fn blocks_from_docx(xml: &str) -> Vec<Block> {
-    let mut blocks = Vec::new();
+    let mut blocks: Vec<Block> = Vec::new();
     let mut rest = xml;
 
     while let Some(start) = rest.find("<w:p") {
@@ -964,15 +964,10 @@ fn blocks_from_docx(xml: &str) -> Vec<Block> {
             Some(level) => Kind::Heading(level.min(3)),
             None => Kind::Paragraph,
         };
-        // Two runs of the same kind merge, so a paragraph split across runs
-        // does not become two paragraphs.
-        match blocks.last_mut() {
-            Some(last) if last.kind == kind => {
-                last.text.push(' ');
-                last.text.push_str(&text);
-            }
-            _ => blocks.push(Block { kind, text }),
-        }
+        // One `<w:p>` is one paragraph, already whole: its runs were joined
+        // above. Merging neighbouring paragraphs of the same kind would collapse
+        // the entire document into a single block.
+        blocks.push(Block { kind, text });
     }
 
     blocks
