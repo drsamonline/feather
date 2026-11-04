@@ -18,7 +18,9 @@ pub enum Format {
     Image,
     /// Plain text, Markdown, source code, CSV, JSON.
     Text,
-    /// DOCX, XLSX, PPTX, ODT, ODS, ODP — the reduced read mode.
+    /// XLSX and XLSM — a workbook, drawn as a grid rather than as pages.
+    Sheet,
+    /// DOCX, PPTX, ODT, ODS, ODP — still unimplemented, and still not claimed.
     Office,
     Unknown,
 }
@@ -43,7 +45,7 @@ impl Format {
     pub fn is_zip_container(self) -> bool {
         matches!(
             self,
-            Format::Epub | Format::Comic | Format::Xps | Format::Office
+            Format::Epub | Format::Comic | Format::Xps | Format::Sheet | Format::Office
         )
     }
 
@@ -60,7 +62,8 @@ impl Format {
             "txt" | "log" | "nfo" | "md" | "markdown" | "json" | "csv" | "tsv" | "rs" | "toml"
             | "yaml" | "yml" | "xml" | "html" | "htm" | "css" | "js" | "ts" | "py" | "c" | "h"
             | "cpp" | "hpp" | "java" | "sh" | "sql" => Format::Text,
-            "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "rtf" => Format::Office,
+            "xlsx" | "xlsm" => Format::Sheet,
+            "docx" | "pptx" | "odt" | "ods" | "odp" | "rtf" => Format::Office,
             _ => Format::Unknown,
         }
     }
@@ -139,6 +142,14 @@ mod tests {
     #[test]
     fn pdf_wins_over_a_lying_extension() {
         assert_eq!(detect(b"%PDF-1.7\n", Some("jpg")), Format::Pdf);
+    }
+
+    #[test]
+    fn a_workbook_is_a_sheet_not_a_generic_office_file() {
+        let zip = b"PK\x03\x04rest of a workbook";
+        assert_eq!(detect(zip, Some("xlsx")), Format::Sheet);
+        assert_eq!(detect(zip, Some("xlsm")), Format::Sheet);
+        assert_eq!(detect(zip, Some("docx")), Format::Office);
     }
 
     #[test]

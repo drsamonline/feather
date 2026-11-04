@@ -17,3 +17,4 @@ feather-core = { path = "../feather-core" }
 feather-pdf = { path = "../feather-pdf" }
 feather-image = { path = "../feather-image" }
 feather-epub = { path = "../feather-epub" }
+feather-sheet = { path = "../feather-sheet" }

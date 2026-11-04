@@ -115,6 +115,19 @@ jobs:
             *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
           esac
 
+          # Spreadsheets: a workbook is a zip of XML, and a sheet is drawn as one
+          # large page rather than paginated.
+          cargo run --release -p feather-cli -- info tests/fixtures/table.xlsx
+          cargo run --release -p feather-cli -- render tests/fixtures/table.xlsx 1 -o "$RUNNER_TEMP/sheet.png"
+          check_png "$RUNNER_TEMP/sheet.png"
+          sheet_text=$(cargo run --release -p feather-cli -- text tests/fixtures/table.xlsx)
+          for word in Region Units Revenue North 48750.5; do
+            case "$sheet_text" in
+              *"$word"*) ;;
+              *) echo "::error::the sheet lost '$word'"; exit 1 ;;
+            esac
+          done
+
           # Plain text and Markdown, through the same reflow engine as a book.
           cargo run --release -p feather-cli -- info tests/fixtures/notes.md
           cargo run --release -p feather-cli -- render tests/fixtures/notes.md 1 -o "$RUNNER_TEMP/notes.png"
