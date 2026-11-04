@@ -254,6 +254,21 @@ The choices that were not obvious, and the evidence that settled them —
 shaping, PDF text, CBR, the tray, in-process windows — live in
 [docs/decisions.md](docs/decisions.md).
 
+## Your own typeface
+
+```sh
+FEATHER_FONT=/path/to/YourFont.ttf feather-viewer document.pdf
+```
+
+The viewer sets a page in whatever face you name, instead of asking the system for
+one. A bad path prints what it could not read and falls back to a system face
+rather than leaving you with a blank page and no explanation.
+
+It exists for two reasons: a reader may prefer a different face, and a rendering
+test needs one fixed face — the same page scored 0% against a baseline rendered
+on one machine and 14% on another whose fonts differed, which is no way to run a
+regression check.
+
 ## Looking at it without a display
 
 ```sh
