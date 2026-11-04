@@ -195,6 +195,12 @@ currently needs none — for a status icon. The right Linux answer is a
 StatusNotifierItem over D-Bus (`ksni`), which is a self-contained piece of work
 rather than a dependency swap, and it is not in this milestone.
 
+## Decisions
+
+The choices that were not obvious, and the evidence that settled them —
+shaping, PDF text, CBR, the tray, in-process windows — live in
+[docs/decisions.md](docs/decisions.md).
+
 ## Looking at it without a display
 
 ```sh
