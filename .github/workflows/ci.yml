@@ -187,7 +187,8 @@ jobs:
         run: |
           size=$(stat -c%s target/release/feather-viewer)
           mb=$(awk "BEGIN { printf \"%.1f\", $size/1048576 }")
-          stated=$(grep -oE '~[0-9.]+ MB' docs/index.html | head -1 | tr -dc '0-9.')
+          # The tilde is optional: the page may quote "9.7 MB" or "~9.7 MB".
+          stated=$(grep -oE '~?[0-9.]+ MB' docs/index.html | head -1 | tr -dc '0-9.' || true)
           echo "measured ${mb} MB, landing page says ${stated} MB"
           awk -v m="$mb" -v s="$stated" 'BEGIN {
             if (s == "") { exit 0 }
