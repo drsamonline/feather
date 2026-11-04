@@ -33,7 +33,7 @@ look good" but "how long does it take to open a document and draw page one".
 | PDF pipeline (hayro, pure Rust, Apache/MIT) | done — renders real pages |
 | Image pipeline — one picture, one page | done |
 | Comic pipeline — CBZ, natural page order | done |
-| CBR (RAR comics) | works when `unrar`, `7z` or `bsdtar` is installed — no permissive Rust RAR decoder exists |
+| CBR (RAR comics) | in-process, no helper needed — via the UnRAR decoder, see `LICENSE-UNRAR` |
 | EPUB pipeline — reflowed text, its own layout engine | done, first cut |
 | Text and Markdown — same engine, one file | done |
 | `feather` CLI — `info` and `render` | done — measures the budget |
@@ -137,7 +137,7 @@ crates/
   feather-core/   Document trait · format router · tile cache · scroll model
                   · session                                  (zero dependencies)
   feather-pdf/    PDF pipeline on hayro                          (pure Rust)
-  feather-image/  still images, and CBZ as an archive of them
+  feather-image/  still images, CBZ and CBR (the last through UnRAR C++)
   feather-text/   glyph rasterisation, shared by the window and the pipelines
   feather-epub/   reflowable text: strip, wrap, paginate (EPUB, Markdown, txt)
   feather-cli/    the spike: info + render, with timings

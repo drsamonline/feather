@@ -38,10 +38,9 @@ stream, map glyph ids through the font's encoding with skrifa, and emit the same
 `TextLayer` the reflowable pipelines already produce. Then selection and search
 work in PDF without touching anything above `feather-pdf`.
 
-## CBR: an external tool — for now
+## CBR: in-process, through the UnRAR decoder
 
-**Status:** implemented as `feather-image::extract_rar`, which shells out to
-`unrar`, `7z`, `7zz` or `bsdtar`.
+**Status:** implemented as `feather-image::extract_rar` using `unrar-ng`.
 
 **Correction, recorded because it was wrong the first time.** I wrote earlier
 that adding a RAR decoder would "relicense the whole application". That is true
@@ -58,11 +57,12 @@ HatchZip (MIT OR Apache-2.0, ~2.5k stars) ships the second route: it depends on
 carries `LICENSE-UNRAR` alongside its own. So an MIT/Apache application can
 include the RARLAB decoder without changing its own licence.
 
-**Why we still shell out today.** The project's two headline claims are "one
-binary, no runtime" and "no C toolchain, cross-compiles anywhere". `unrar-ng-sys`
-breaks the second: it compiles vendored C++ through `cc`, which means a C++
-cross-toolchain for Windows ARM64 and a longer, more fragile build. It also adds
-a non-OSI licence file to the distribution.
+**Decision: taken, in-process.** The external-tool version worked but made a
+portable single binary depend on something the reader had to install, which is
+the opposite of the product. The cost is paid openly: `feather-image` now
+compiles C++ through `cc`, so the workspace is no longer pure Rust and the
+"no C toolchain" claim is retired; the binary carries a non-OSI licence, shipped
+as `LICENSE-UNRAR` in every archive.
 
 **The trade, stated plainly.** In-process extraction means CBR opens with no
 helper installed — one fewer thing for a reader to get wrong. The cost is a C++

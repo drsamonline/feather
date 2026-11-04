@@ -18,17 +18,17 @@ fn is_image_name(name: &str) -> bool {
         .any(|ext| lower.ends_with(ext))
 }
 
-/// Unpack a RAR archive with whatever the system already has, and return its
-/// images in reading order.
+/// Unpack a RAR archive in-process and return its images in reading order.
 ///
-/// RAR is the one format in this viewer with no permissive decoder in Rust: the
-/// pure-Rust implementation is GPL-3.0 and carries RARLAB's restriction, which
-/// would relicense the whole application. Shelling out keeps the licence clean
-/// and costs nothing when the helper is absent — the same trade the plan makes
-/// for LibreOffice and Office documents.
+/// RAR is the one format here whose decoder is not pure Rust: `unrar-ng` binds
+/// RARLAB's UnRAR C++, which is freeware — usable in any software and
+/// distributable inside it, on the single condition that it is not used to build
+/// a RAR archiver. The bindings are MIT/Apache; the C++ carries its own licence,
+/// shipped as `LICENSE-UNRAR`.
+///
+/// This replaced shelling out to `unrar`/`7z`/`bsdtar`, which worked but made a
+/// portable single binary depend on something the user had to install.
 fn extract_rar(data: &[u8]) -> Result<Vec<Vec<u8>>, DocumentError> {
-    use std::process::Command;
-
     let root = std::env::temp_dir().join(format!("feather-cbr-{}", std::process::id()));
     let unpacked = root.join("pages");
     let _ = std::fs::remove_dir_all(&root);
@@ -39,54 +39,17 @@ fn extract_rar(data: &[u8]) -> Result<Vec<Vec<u8>>, DocumentError> {
     std::fs::write(&archive, data)
         .map_err(|e| DocumentError::Decode(format!("could not stage the archive: {e}")))?;
 
-    let mut attempt = String::new();
-    let mut extracted = false;
+    let opened = unrar_ng::Archive::new(&archive)
+        .open_for_processing()
+        .map_err(|e| {
+            let _ = std::fs::remove_dir_all(&root);
+            DocumentError::Decode(format!("could not read the RAR archive: {e}"))
+        })?;
 
-    for tool in ["unrar", "7z", "7zz", "bsdtar"] {
-        let mut command = Command::new(tool);
-        match tool {
-            "unrar" => {
-                command
-                    .arg("x")
-                    .arg("-o+")
-                    .arg("-idq")
-                    .arg(&archive)
-                    .arg(format!("{}/", unpacked.display()));
-            }
-            "bsdtar" => {
-                command.arg("-xf").arg(&archive).arg("-C").arg(&unpacked);
-            }
-            _ => {
-                command
-                    .arg("x")
-                    .arg("-y")
-                    .arg(format!("-o{}", unpacked.display()))
-                    .arg(&archive);
-            }
-        }
-
-        match command.output() {
-            Ok(output) if output.status.success() => {
-                extracted = true;
-                break;
-            }
-            Ok(output) => {
-                attempt = format!(
-                    "{tool} failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim().to_string()
-                );
-            }
-            Err(_) => {
-                // Not installed; try the next one.
-                attempt = format!("{tool} is not installed");
-            }
-        }
-    }
-
-    if !extracted {
+    if let Err(e) = opened.extract_all(&unpacked) {
         let _ = std::fs::remove_dir_all(&root);
-        return Err(DocumentError::Unsupported(format!(
-            "this is a RAR archive (CBR) and no extractor was found — install unrar, 7z or bsdtar ({attempt})"
+        return Err(DocumentError::Decode(format!(
+            "could not extract the RAR archive: {e}"
         )));
     }
 

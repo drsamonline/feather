@@ -12,3 +12,8 @@ rust-version.workspace = true
 feather-core = { path = "../feather-core" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# RAR, in-process. The bindings are MIT/Apache; the vendored UnRAR C++ is
+# freeware under its own licence (see LICENSE-UNRAR): usable in any software,
+# not usable to build a RAR archiver. It compiles C++, so this crate is no
+# longer pure Rust.
+unrar-ng = "0.7"

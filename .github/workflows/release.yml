@@ -67,7 +67,7 @@ jobs:
           out="dist/${{ matrix.archive }}"
           mkdir -p "dist/${{ matrix.archive }}"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.archive }}/"
-          cp README.md LICENSE "dist/${{ matrix.archive }}/"
+          cp README.md LICENSE LICENSE-UNRAR "dist/${{ matrix.archive }}/"
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             (cd dist && 7z a -tzip "${{ matrix.archive }}.zip" "${{ matrix.archive }}" > /dev/null)
