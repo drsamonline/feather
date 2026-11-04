@@ -100,6 +100,7 @@ cargo run --release -p feather-app -- some.pdf
 | drop a file on the window | open it (several files → several tabs) |
 | click a tab | switch to it |
 | `Ctrl+Alt+F` (anywhere) | summon the window |
+| `o` | open a document — the system picker, starting where you were |
 | `n` | open this document in a window of its own |
 | drag over text | select it (EPUB today) |
 | `c` | copy the selection |
