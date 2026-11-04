@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Compare a rendered page against its committed baseline.
+"""Compare a rendered page against a committed baseline.
+
+**Not wired into CI yet, on purpose.** The baseline is only meaningful against a
+known font, and the three runners have different ones: the same code scored 0.00%
+against a baseline rendered here and 14.25% on the Ubuntu runner. Wiring it up
+before the renderer can be pinned would fail for the wrong reason, which is worse
+than not checking.
+
+The fix is a `FEATHER_FONT` override plus a small bundled face, so the test and
+the baseline agree by construction. The script is here because it is the right
+check once that exists, and it has already earned its keep: 17.81% against the
+broken shaping build, 0.00% against the good one.
+
+Original note follows.
+
+Compare a rendered page against its committed baseline.
 
 The blank-frame check in CI only asks whether *something* was drawn. That is not
 enough: a renderer can draw every glyph in the wrong place and still pass it, and
