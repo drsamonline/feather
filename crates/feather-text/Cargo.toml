@@ -9,7 +9,5 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-# Shaping (rustybuzz), font fallback and glyph rasterisation (swash) in one
-# crate. fontdue could rasterise but could not shape, which is why Devanagari
-# and Arabic came out wrong.
-cosmic-text = "0.12"
+fontdue = "0.9"
+fontdb = "0.23"
