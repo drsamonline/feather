@@ -21,7 +21,7 @@ a Word file from a PDF.
 
 | Repository | Formats | Crates that do the work | Verdict |
 |---|---|---|---|
-| **wordcraft** | `.docx` | `wordcraft-docx` (reader/writer), `wordcraft-layout`, `wordcraft-render` (vello_cpu, "pages and thumbnails") | **The Office answer.** A real layout engine: drop caps, text wrapping, hyphenation, TOC, footnotes, track changes. 17k stars. |
+| **wordcraft** | `.docx` | `wordcraft-docx` (reader/writer), `wordcraft-layout`, `wordcraft-render` (vello_cpu, "pages and thumbnails") | **Not taken — we wrote the read half.** Its value is a layout engine wrapped in an editor. |
 | **deckcraft** | `.pptx` | `deckcraft-pptx` (ECMA-376 PresentationML), `deckcraft-render` (slides, masters, charts, effects) | **Slides.** Same shape, same renderer. Also carries its own h264/hevc/av1/vp9/opus codecs for embedded media. |
 | **gridcraft** | `.xlsx`, `.csv` | `gridcraft-xlsx`, `gridcraft-formula`, `gridcraft-numfmt` | **Superseded: we wrote our own.** See below. |
 | **photocraft** | `.psd`, RAW, `.heif` | `photocraft-psd`, `photocraft-raw`, `photocraft-heif`, `photocraft-codecs` | **New image formats** the `image` crate will not open. Cheapest win in the suite: images already fit our pipeline exactly. |
@@ -73,6 +73,23 @@ to take first.
    may assume an editing session exists.
 4. **Binary size.** `vello_cpu` is already linked through hayro, so the renderer
    is nearly free. The parsers are not: expect a few hundred KB each.
+
+## Word, and why WordCraft is not in it
+
+`.docx` is now supported by a reader in `feather-epub`: a Word file is a zip of
+XML, `word/document.xml` holds paragraphs of runs, and the blocks go to the same
+`Reflow` that draws an EPUB. Heading styles survive, runs split mid-word rejoin,
+numeric entities decode.
+
+WordCraft's renderer would give real page layout — columns, floating images,
+headers and footers, exact line breaks. That is a genuine step up from a reflow,
+and it is not what a read-only viewer needs first: the product is a viewer, the
+crates are an editor, and the dependency is a git workspace. The honest label is
+"approximate", and the page says so.
+
+If page-accurate Word ever becomes the requirement, `wordcraft-layout` and
+`wordcraft-render` are where to start, and this note is the record that we
+looked and chose otherwise.
 
 ## What I would do
 
