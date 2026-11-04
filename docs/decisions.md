@@ -42,6 +42,12 @@ work in PDF without touching anything above `feather-pdf`.
 
 **Status:** implemented — `feather-image::extract_rar`.
 
+Verified against a real 25 MB RAR4 comic (68 JPEGs, method 0x33 — normal
+compression, so it genuinely needs a decompressor and cannot be read by parsing
+headers alone). That archive also showed why the extracted pages are sorted by
+file name rather than by path: RARs written on Windows store
+`folder\\page01.jpg`, and an extractor on Linux may keep those backslashes.
+
 CBR is a RAR archive (CBZ is the zip one). The pure-Rust reader `unrar-rs` is
 GPL-3.0-or-later and carries RARLAB's restriction that the source may not be
 used to build a RAR archiver. Linking it would make Feather GPL-3.0.

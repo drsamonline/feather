@@ -92,8 +92,17 @@ fn extract_rar(data: &[u8]) -> Result<Vec<Vec<u8>>, DocumentError> {
 
     let mut files = Vec::new();
     collect_images(&unpacked, &mut files);
+    // Sorted by file name, not by full path. RARs written on Windows store
+    // `folder\\page01.jpg`, and an extractor on Linux may keep those
+    // backslashes in the name — comparing whole paths then orders the book by
+    // whatever the separator happens to be.
     files.sort_by(|a, b| {
-        feather_core::natural_cmp(&a.to_string_lossy(), &b.to_string_lossy())
+        let name = |path: &std::path::Path| {
+            path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string_lossy().to_string())
+        };
+        feather_core::natural_cmp(&name(a), &name(b))
     });
 
     let mut pages = Vec::with_capacity(files.len());
