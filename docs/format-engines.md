@@ -23,7 +23,7 @@ a Word file from a PDF.
 |---|---|---|---|
 | **wordcraft** | `.docx` | `wordcraft-docx` (reader/writer), `wordcraft-layout`, `wordcraft-render` (vello_cpu, "pages and thumbnails") | **The Office answer.** A real layout engine: drop caps, text wrapping, hyphenation, TOC, footnotes, track changes. 17k stars. |
 | **deckcraft** | `.pptx` | `deckcraft-pptx` (ECMA-376 PresentationML), `deckcraft-render` (slides, masters, charts, effects) | **Slides.** Same shape, same renderer. Also carries its own h264/hevc/av1/vp9/opus codecs for embedded media. |
-| **gridcraft** | `.xlsx`, `.csv` | `gridcraft-xlsx` (SpreadsheetML import/export), `gridcraft-formula`, `gridcraft-numfmt` | **Spreadsheets.** Import is solid; the pixel story is less clear — no `render` crate, only a `pdf` one. |
+| **gridcraft** | `.xlsx`, `.csv` | `gridcraft-xlsx`, `gridcraft-formula`, `gridcraft-numfmt` | **Superseded: we wrote our own.** See below. |
 | **photocraft** | `.psd`, RAW, `.heif` | `photocraft-psd`, `photocraft-raw`, `photocraft-heif`, `photocraft-codecs` | **New image formats** the `image` crate will not open. Cheapest win in the suite: images already fit our pipeline exactly. |
 | **vectorcraft** | `.svg`, `.eps` | `vectorcraft-svg`, `vectorcraft-eps`, `vectorcraft-render` | **Vector art**, if SVG ever needs to be more than text. |
 | **designcraft** | `.idml`, `.epub` | `designcraft-idml`, `designcraft-epub` | InDesign markup. Niche, but nothing else reads it. |
@@ -36,6 +36,23 @@ a Word file from a PDF.
 editing), `effectcraft` (motion graphics) and `materialcraft` (node-based
 materials) are excellent and irrelevant: a document viewer has nothing to say
 about an audio session or a 3D material graph.
+
+## Excel, and why GridCraft is not in it
+
+`.xlsx` is now supported, by a reader written here in `feather-sheet`: a workbook
+is a zip of XML, and we already read zips for comics. It handles shared strings,
+inline strings, booleans, numbers and sheet names, and draws each worksheet as
+one large page so the tile cache, the zoom ladder and the scroll model do the
+rest.
+
+GridCraft would have done it, and its `gridcraft-xlsx` crate is better than ours
+on the hard parts — number formats, formulas, tables, charts. Three things tipped
+it the other way: the crate is unpublished, so it is a git dependency on a 16 MB
+workspace; it pulls `gridcraft-core`, `-model`, `-formula` and `-math` plus
+`quick-xml`, `aes` and `cfb`; and it is shaped around an editing session. Two
+hundred lines of reader is the better trade for a viewer that only displays —
+and if we ever want formulas or number formats, `gridcraft-numfmt` is the crate
+to take first.
 
 ## What it would actually cost
 
