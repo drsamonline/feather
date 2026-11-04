@@ -24,7 +24,7 @@ a Word file from a PDF.
 | **wordcraft** | `.docx` | `wordcraft-docx` (reader/writer), `wordcraft-layout`, `wordcraft-render` (vello_cpu, "pages and thumbnails") | **Not taken — we wrote the read half.** Its value is a layout engine wrapped in an editor. |
 | **deckcraft** | `.pptx` | `deckcraft-pptx` (ECMA-376 PresentationML), `deckcraft-render` | **Not taken — we wrote the text half.** Its renderer does charts, effects and embedded video; ours does words. |
 | **gridcraft** | `.xlsx`, `.csv` | `gridcraft-xlsx`, `gridcraft-formula`, `gridcraft-numfmt` | **Superseded: we wrote our own.** See below. |
-| **photocraft** | `.psd`, RAW, `.heif` | `photocraft-psd`, `photocraft-raw`, `photocraft-heif`, `photocraft-codecs` | **New image formats** the `image` crate will not open. Cheapest win in the suite: images already fit our pipeline exactly. |
+| **photocraft** | `.psd`, RAW, `.heif` | `photocraft-psd`, `photocraft-raw`, `photocraft-heif`, `photocraft-codecs` | **PSD taken, as our own reader.** HEIF declined: it needs an HEVC decoder. |
 | **vectorcraft** | `.svg`, `.eps` | `vectorcraft-svg`, `vectorcraft-eps`, `vectorcraft-render` | **Vector art**, if SVG ever needs to be more than text. |
 | **designcraft** | `.idml`, `.epub` | `designcraft-idml`, `designcraft-epub` | InDesign markup. Niche, but nothing else reads it. |
 | **cadcraft** | `.dwg`, `.dxf` | `cadcraft-dwg`, `cadcraft-dxf`, `cadcraft-render` | Drawings. Its DWG bridge wraps `acadrust`, which is **MPL-2.0** — a different licence question from the rest. |
@@ -73,6 +73,20 @@ to take first.
    may assume an editing session exists.
 4. **Binary size.** `vello_cpu` is already linked through hayro, so the renderer
    is nearly free. The parsers are not: expect a few hundred KB each.
+
+## Photoshop, and why HEIF is not here
+
+A layered `.psd` ends with a flattened composite — the picture the author saw.
+That is what a viewer wants, so `feather-image` reads it: header, skip the
+colour-mode, resource and layer blocks, then the composite, raw or PackBits. No
+layer compositing, no blend modes, no smart objects, and the error messages say
+8-bit, RGB or greyscale, no ZIP compression.
+
+**HEIF is a different animal.** It is not a container puzzle, it is HEVC — a
+video codec with motion compensation and all. photocraft has one; taking it means
+a git dependency on a 140 MB workspace and a decoder several times the size of
+this entire viewer, for a format most documents here will never use. Declined
+with the reason rather than left as a mystery.
 
 ## OpenDocument came free
 
