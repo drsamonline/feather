@@ -40,7 +40,7 @@ work in PDF without touching anything above `feather-pdf`.
 
 ## CBR: an external tool, not a dependency
 
-**Status:** decided, not implemented.
+**Status:** implemented — `feather-image::extract_rar`.
 
 CBR is a RAR archive (CBZ is the zip one). The pure-Rust reader `unrar-rs` is
 GPL-3.0-or-later and carries RARLAB's restriction that the source may not be

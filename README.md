@@ -33,7 +33,7 @@ look good" but "how long does it take to open a document and draw page one".
 | PDF pipeline (hayro, pure Rust, Apache/MIT) | done — renders real pages |
 | Image pipeline — one picture, one page | done |
 | Comic pipeline — CBZ, natural page order | done |
-| CBR (RAR comics) | not supported — RAR is a separate decoder and a separate licence |
+| CBR (RAR comics) | works when `unrar`, `7z` or `bsdtar` is installed — no permissive Rust RAR decoder exists |
 | EPUB pipeline — reflowed text, its own layout engine | done, first cut |
 | Text and Markdown — same engine, one file | done |
 | `feather` CLI — `info` and `render` | done — measures the budget |

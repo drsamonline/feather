@@ -101,6 +101,20 @@ jobs:
             *"Contents"*) echo "::error::navigation leaked into the book"; exit 1 ;;
           esac
 
+          # CBR is a RAR archive and there is no permissive Rust decoder, so it
+          # is handed to an external tool. This fixture is not a real archive —
+          # it exists to prove the failure explains itself either way, whether
+          # the runner has an extractor or not.
+          if cbr_out=$(cargo run --release -p feather-cli -- info tests/fixtures/fake.cbr 2>&1); then
+            echo "::error::a RAR archive should not have opened"
+            exit 1
+          fi
+          echo "$cbr_out" | tail -2
+          case "$cbr_out" in
+            *RAR*) ;;
+            *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
+          esac
+
           # Plain text and Markdown, through the same reflow engine as a book.
           cargo run --release -p feather-cli -- info tests/fixtures/notes.md
           cargo run --release -p feather-cli -- render tests/fixtures/notes.md 1 -o "$RUNNER_TEMP/notes.png"

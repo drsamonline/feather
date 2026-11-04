@@ -18,6 +18,114 @@ fn is_image_name(name: &str) -> bool {
         .any(|ext| lower.ends_with(ext))
 }
 
+/// Unpack a RAR archive with whatever the system already has, and return its
+/// images in reading order.
+///
+/// RAR is the one format in this viewer with no permissive decoder in Rust: the
+/// pure-Rust implementation is GPL-3.0 and carries RARLAB's restriction, which
+/// would relicense the whole application. Shelling out keeps the licence clean
+/// and costs nothing when the helper is absent — the same trade the plan makes
+/// for LibreOffice and Office documents.
+fn extract_rar(data: &[u8]) -> Result<Vec<Vec<u8>>, DocumentError> {
+    use std::process::Command;
+
+    let root = std::env::temp_dir().join(format!("feather-cbr-{}", std::process::id()));
+    let unpacked = root.join("pages");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&unpacked)
+        .map_err(|e| DocumentError::Decode(format!("could not create a temp directory: {e}")))?;
+
+    let archive = root.join("comic.cbr");
+    std::fs::write(&archive, data)
+        .map_err(|e| DocumentError::Decode(format!("could not stage the archive: {e}")))?;
+
+    let mut attempt = String::new();
+    let mut extracted = false;
+
+    for tool in ["unrar", "7z", "7zz", "bsdtar"] {
+        let mut command = Command::new(tool);
+        match tool {
+            "unrar" => {
+                command
+                    .arg("x")
+                    .arg("-o+")
+                    .arg("-idq")
+                    .arg(&archive)
+                    .arg(format!("{}/", unpacked.display()));
+            }
+            "bsdtar" => {
+                command.arg("-xf").arg(&archive).arg("-C").arg(&unpacked);
+            }
+            _ => {
+                command
+                    .arg("x")
+                    .arg("-y")
+                    .arg(format!("-o{}", unpacked.display()))
+                    .arg(&archive);
+            }
+        }
+
+        match command.output() {
+            Ok(output) if output.status.success() => {
+                extracted = true;
+                break;
+            }
+            Ok(output) => {
+                attempt = format!(
+                    "{tool} failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim().to_string()
+                );
+            }
+            Err(_) => {
+                // Not installed; try the next one.
+                attempt = format!("{tool} is not installed");
+            }
+        }
+    }
+
+    if !extracted {
+        let _ = std::fs::remove_dir_all(&root);
+        return Err(DocumentError::Unsupported(format!(
+            "this is a RAR archive (CBR) and no extractor was found — install unrar, 7z or bsdtar ({attempt})"
+        )));
+    }
+
+    let mut files = Vec::new();
+    collect_images(&unpacked, &mut files);
+    files.sort_by(|a, b| {
+        feather_core::natural_cmp(&a.to_string_lossy(), &b.to_string_lossy())
+    });
+
+    let mut pages = Vec::with_capacity(files.len());
+    for file in files {
+        if let Ok(bytes) = std::fs::read(&file) {
+            pages.push(bytes);
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(pages)
+}
+
+/// Every image under a directory, recursively.
+fn collect_images(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_images(&path, out);
+        } else if path
+            .file_name()
+            .map(|name| is_image_name(&name.to_string_lossy()))
+            .unwrap_or(false)
+        {
+            out.push(path);
+        }
+    }
+}
+
 fn encode_png(img: RgbaImage) -> Result<Vec<u8>, DocumentError> {
     let mut out = Vec::new();
     DynamicImage::ImageRgba8(img)
@@ -100,17 +208,30 @@ impl Document for ImageDocument {
 pub struct ComicDocument {
     data: Vec<u8>,
     names: Vec<String>,
+    /// Pages already extracted into memory — used for CBR, where the archive is
+    /// unpacked by an external tool and there is nothing left to seek into.
+    pages: Vec<Vec<u8>>,
 }
 
 impl ComicDocument {
     pub fn from_bytes(data: Vec<u8>) -> Result<Self, DocumentError> {
-        // CBR is a RAR archive, not a zip. Say so instead of letting it fail as
-        // "not a readable archive" — and do not advertise it in the desktop
-        // files until a RAR decoder is actually here.
+        // CBR is a RAR archive, not a zip. There is no permissive RAR decoder in
+        // Rust — the pure-Rust one is GPL-3.0 — so the archive is handed to a
+        // helper the system already has, the same way the plan treats
+        // LibreOffice for Office documents. No dependency, no licence
+        // entanglement, and a clear message when no helper is installed.
         if data.starts_with(b"Rar!") {
-            return Err(DocumentError::Unsupported(
-                "CBR is a RAR archive; only CBZ (zip) comics are supported so far".to_string(),
-            ));
+            let pages = extract_rar(&data)?;
+            if pages.is_empty() {
+                return Err(DocumentError::Decode(
+                    "the archive contains no images".to_string(),
+                ));
+            }
+            return Ok(ComicDocument {
+                data: Vec::new(),
+                names: Vec::new(),
+                pages,
+            });
         }
 
         let mut archive = zip::ZipArchive::new(Cursor::new(data.as_slice()))
@@ -133,7 +254,11 @@ impl ComicDocument {
             ));
         }
 
-        Ok(ComicDocument { data, names })
+        Ok(ComicDocument {
+            data,
+            names,
+            pages: Vec::new(),
+        })
     }
 
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, DocumentError> {
@@ -142,6 +267,16 @@ impl ComicDocument {
     }
 
     fn page_bytes(&self, page: usize) -> Result<Vec<u8>, DocumentError> {
+        if !self.pages.is_empty() {
+            return self
+                .pages
+                .get(page)
+                .cloned()
+                .ok_or(DocumentError::OutOfRange {
+                    page,
+                    count: self.pages.len(),
+                });
+        }
         let name = self
             .names
             .get(page)
@@ -162,7 +297,11 @@ impl ComicDocument {
 
 impl Document for ComicDocument {
     fn page_count(&self) -> usize {
-        self.names.len()
+        if self.pages.is_empty() {
+            self.names.len()
+        } else {
+            self.pages.len()
+        }
     }
 
     fn page_size(&self, _page: usize) -> Option<PageSize> {
