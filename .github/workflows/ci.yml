@@ -131,6 +131,20 @@ jobs:
             *) echo "::error::the ODT lost its accents"; exit 1 ;;
           esac
 
+          cargo run --release -p feather-cli -- info tests/fixtures/talk.odp
+          cargo run --release -p feather-cli -- render tests/fixtures/talk.odp 2 -o "$RUNNER_TEMP/odp.png"
+          check_png "$RUNNER_TEMP/odp.png"
+          odp_text=$(cargo run --release -p feather-cli -- text tests/fixtures/talk.odp)
+          echo "--- odp text (${#odp_text} chars) ---"; echo "$odp_text"; echo "--- end ---"
+          case "$odp_text" in
+            *"Feather opens OpenDocument decks"*) ;;
+            *) echo "::error::the ODP lost its title"; exit 1 ;;
+          esac
+          case "$odp_text" in
+            *"A second ODP slide"*) ;;
+            *) echo "::error::the second ODP slide is missing"; exit 1 ;;
+          esac
+
           cargo run --release -p feather-cli -- info tests/fixtures/ledger.ods
           cargo run --release -p feather-cli -- render tests/fixtures/ledger.ods 1 -o "$RUNNER_TEMP/ods.png"
           check_png "$RUNNER_TEMP/ods.png"
