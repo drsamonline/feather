@@ -136,6 +136,11 @@ jobs:
           cargo run --release -p feather-cli -- render tests/fixtures/letter.docx 1 -o "$RUNNER_TEMP/docx.png"
           check_png "$RUNNER_TEMP/docx.png"
           docx_text=$(cargo run --release -p feather-cli -- text tests/fixtures/letter.docx)
+          # Print what came back before judging it: the last failure here said
+          # "lost its title" and showed nothing at all, which cost a run.
+          echo "--- docx text (${#docx_text} chars) ---"
+          echo "$docx_text"
+          echo "--- end ---"
           case "$docx_text" in
             *"Feather reads Word files"*) ;;
             *) echo "::error::the Word file lost its title"; exit 1 ;;
