@@ -99,6 +99,10 @@ pub fn detect(bytes: &[u8], extension: Option<&str>) -> Format {
     if starts_with(bytes, b"%PDF") {
         return Format::Pdf;
     }
+    // Photoshop, which the image crate cannot open and this pipeline can.
+    if starts_with(bytes, b"8BPS") {
+        return Format::Image;
+    }
     if starts_with(bytes, b"\x89PNG\r\n\x1a\n")
         || starts_with(bytes, b"\xff\xd8\xff")
         || starts_with(bytes, b"GIF87a")
@@ -178,6 +182,13 @@ mod tests {
         assert_eq!(detect(zip, Some("odp")), Format::Slide);
         // With no extension, a zip is a comic — the common case by far.
         assert_eq!(detect(zip, None), Format::Comic);
+    }
+
+    #[test]
+    fn photoshop_files_are_images() {
+        assert_eq!(detect(b"8BPS\x00\x01rest", Some("psd")), Format::Image);
+        // A layered PSD is still just an image to the router.
+        assert_eq!(detect(b"8BPS\x00\x01rest", None), Format::Image);
     }
 
     #[test]

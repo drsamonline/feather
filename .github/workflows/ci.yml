@@ -115,6 +115,12 @@ jobs:
             *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
           esac
 
+          # Photoshop: the composite at the end of a layered file, decoded here
+          # because the image crate has no PSD.
+          cargo run --release -p feather-cli -- info tests/fixtures/artwork.psd
+          cargo run --release -p feather-cli -- render tests/fixtures/artwork.psd 1 -o "$RUNNER_TEMP/psd.png"
+          check_png "$RUNNER_TEMP/psd.png"
+
           # OpenDocument: the same three pipelines, another dialect.
           cargo run --release -p feather-cli -- info tests/fixtures/notes.odt
           odt_text=$(cargo run --release -p feather-cli -- text tests/fixtures/notes.odt)
