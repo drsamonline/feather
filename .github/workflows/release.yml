@@ -69,14 +69,17 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.archive }}/"
           cp README.md LICENSE LICENSE-UNRAR "dist/${{ matrix.archive }}/"
 
+          # xz, not gzip: a release is downloaded once and unpacked once, so the
+          # only thing that matters is how small it is on the way down. Zip on
+          # Windows because Windows users expect to double-click it.
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            (cd dist && 7z a -tzip "${{ matrix.archive }}.zip" "${{ matrix.archive }}" > /dev/null)
+            (cd dist && 7z a -tzip -mx=9 "${{ matrix.archive }}.zip" "${{ matrix.archive }}" > /dev/null)
             rm -rf "dist/${{ matrix.archive }}"
             file="dist/${{ matrix.archive }}.zip"
           else
-            (cd dist && tar -czf "${{ matrix.archive }}.tar.gz" "${{ matrix.archive }}")
+            (cd dist && tar -cJf "${{ matrix.archive }}.tar.xz" "${{ matrix.archive }}")
             rm -rf "dist/${{ matrix.archive }}"
-            file="dist/${{ matrix.archive }}.tar.gz"
+            file="dist/${{ matrix.archive }}.tar.xz"
           fi
 
           # A checksum next to the archive, because a download nobody can verify
