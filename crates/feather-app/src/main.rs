@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! The window.
 //!
 //! Four rules hold this together, and everything else is detail:
@@ -397,6 +398,9 @@ fn slice_tiles(rgba: &[u8], width: u32, height: u32) -> Vec<TileData> {
 struct View {
     layout: Layout,
     page: usize,
+    /// True while the zoom is "fit to width" and should follow the window.
+    /// Any manual zoom clears it; pressing 1 sets it again.
+    auto_fit: bool,
 }
 
 struct App {
@@ -511,7 +515,14 @@ impl App {
                 layout.set_page_count(count, placeholder);
                 let zoom = layout.fit_width_zoom(0);
                 layout.set_zoom(zoom);
-                self.views.insert(id, View { layout, page: 0 });
+                self.views.insert(
+                    id,
+                    View {
+                        layout,
+                        page: 0,
+                        auto_fit: true,
+                    },
+                );
                 self.invalidate();
                 self.update_title();
             }
@@ -1093,6 +1104,7 @@ impl App {
     fn set_zoom(&mut self, factor: f32) {
         let vh = self.viewport.1;
         if let Some(view) = self.view_mut() {
+            view.auto_fit = false;
             view.layout.zoom_at(factor, vh / 2.0);
         }
         self.invalidate();
@@ -1101,6 +1113,7 @@ impl App {
 
     fn fit_width(&mut self) {
         if let Some(view) = self.view_mut() {
+            view.auto_fit = true;
             let zoom = view.layout.fit_width_zoom(view.page);
             view.layout.set_zoom(zoom);
             view.layout.scroll_to_page(view.page);
@@ -1566,6 +1579,18 @@ impl ApplicationHandler<UserEvent> for App {
                     let scale = window.scale_factor() as f32;
                     self.set_window_size(size.width as f32 / scale, size.height as f32 / scale);
                 }
+                // The window reports a tiny (or zero) size before it is shown on
+                // some platforms, so a fit computed at startup can be nonsense.
+                // While the zoom is still ours, follow the real size.
+                if self.viewport.0 > 50.0 {
+                    if let Some(view) = self.view_mut() {
+                        if view.auto_fit {
+                            let zoom = view.layout.fit_width_zoom(view.page);
+                            view.layout.set_zoom(zoom);
+                            view.layout.scroll_to_page(view.page);
+                        }
+                    }
+                }
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
@@ -1799,7 +1824,14 @@ fn screenshot(path: &str, out: &str, page: usize) -> Result<(), String> {
     let zoom = layout.fit_width_zoom(page);
     layout.set_zoom(zoom);
     layout.scroll_to_page(page);
-    app.views.insert(id, View { layout, page });
+    app.views.insert(
+        id,
+        View {
+            layout,
+            page,
+            auto_fit: false,
+        },
+    );
 
     // Render the requested page the way the frame will ask for it.
     let size = app

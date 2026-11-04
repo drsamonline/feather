@@ -69,12 +69,25 @@ and renderer. Mechanical, but a refactor of every method above it.
 
 *Done when:* two windows share one tile cache, one render thread and one hotkey.
 
+## v0.2.1 — the things a desktop app needs
+
+- **An Open dialog.** `o` should raise the system file picker. Needs `rfd`, whose
+  Linux backend is either GTK or a D-Bus portal — a dependency choice worth
+  making deliberately rather than guessing, since GTK would break the
+  "no system libraries" property the packaging depends on.
+- **No console window on Windows.** Done for this repo in the same commit as the
+  zoom fix: `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`.
+  The same one line applies to every other Windows GUI binary in the estate.
+
 ## Then, if it earns its place
 
 - **Office read mode** — Tier 1 from the plan: parse to blocks, reflow, label it
   approximate. Never page-accurate.
 - **EPUB images and light CSS** — currently text only.
 - **Phrase search** — the matcher is word-level.
+- **Dropbox** — browse and open a file from a linked Dropbox account. An OAuth
+  app, a token store, and a network path in a viewer that has none of those; it
+  is the first feature that would make "no cloud" untrue.
 - **Multi-page selection** — needs a document-wide text order.
 - **`.cbr` in the desktop MIME list** — one line, now that no helper is needed.
 - **Lazy RAR extraction** — a comic is fully unpacked on open, so a 25 MB CBR
