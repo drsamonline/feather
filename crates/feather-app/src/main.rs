@@ -1778,7 +1778,7 @@ impl ApplicationHandler<UserEvent> for App {
 /// trust: every visual decision in this file was made without seeing the
 /// result. The frame comes from the same `render_frame` the window uses, so a
 /// screenshot cannot drift from what a reader sees.
-fn screenshot(path: &str, out: &str) -> Result<(), String> {
+fn screenshot(path: &str, out: &str, page: usize) -> Result<(), String> {
     let (doc, count, placeholder) = load(&PathBuf::from(path))?;
 
     let (w, h) = (1000.0_f32, 1200.0_f32);
@@ -1795,27 +1795,31 @@ fn screenshot(path: &str, out: &str) -> Result<(), String> {
     let mut layout = Layout::new();
     layout.set_viewport(app.viewport.0, app.viewport.1);
     layout.set_page_count(count, placeholder);
-    let zoom = layout.fit_width_zoom(0);
+    let page = page.min(count.saturating_sub(1));
+    let zoom = layout.fit_width_zoom(page);
     layout.set_zoom(zoom);
-    app.views.insert(id, View { layout, page: 0 });
+    layout.scroll_to_page(page);
+    app.views.insert(id, View { layout, page });
 
-    // Render the first page the way the frame will ask for it.
+    // Render the requested page the way the frame will ask for it.
     let size = app
         .views
         .get(&id)
-        .and_then(|view| view.layout.page_size(0))
+        .and_then(|view| view.layout.page_size(page))
         .unwrap_or(placeholder);
     let level = level_capped(zoom, size, MAX_RASTER_PIXELS);
-    let rendered = doc.render(0, scale_for_level(level)).map_err(|e| e.to_string())?;
+    let rendered = doc
+        .render(page, scale_for_level(level))
+        .map_err(|e| e.to_string())?;
     let decoded = image::load_from_memory(&rendered.png)
         .map_err(|e| e.to_string())?
         .to_rgba8();
     let (page_w, page_h) = decoded.dimensions();
-    app.dims.insert((id, 0, level), (page_w, page_h));
+    app.dims.insert((id, page, level), (page_w, page_h));
     for tile in slice_tiles(&decoded.into_raw(), page_w, page_h) {
         let key = TileKey {
             doc: id,
-            page: 0,
+            page,
             level,
             x: tile.col,
             y: tile.row,
@@ -1841,7 +1845,7 @@ fn screenshot(path: &str, out: &str) -> Result<(), String> {
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
     std::fs::write(out, png).map_err(|e| e.to_string())?;
-    eprintln!("feather: wrote {out} ({w}×{h})");
+    eprintln!("feather: wrote {out} ({w}×{h}, page {} of {count})", page + 1);
     Ok(())
 }
 
@@ -1849,6 +1853,7 @@ fn main() {
     let mut path: Option<String> = None;
     let mut new_window = false;
     let mut shot: Option<String> = None;
+    let mut shot_page: usize = 1;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -1858,6 +1863,16 @@ fn main() {
                     eprintln!("feather: --screenshot needs an output path");
                     std::process::exit(2);
                 }).unwrap());
+            }
+            "--page" => {
+                shot_page = args
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .filter(|n: &usize| *n > 0)
+                    .unwrap_or_else(|| {
+                        eprintln!("feather: --page needs a page number");
+                        std::process::exit(2);
+                    });
             }
             "--new-window" => new_window = true,
             "-h" | "--help" => {
@@ -1885,7 +1900,7 @@ fn main() {
             eprintln!("feather: --screenshot needs a document");
             std::process::exit(2);
         };
-        if let Err(e) = screenshot(&target, &out) {
+        if let Err(e) = screenshot(&target, &out, shot_page) {
             eprintln!("feather: {e}");
             std::process::exit(1);
         }
