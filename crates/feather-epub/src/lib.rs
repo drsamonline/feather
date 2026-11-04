@@ -897,17 +897,23 @@ impl DocxDocument {
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
             .map_err(|e| DocumentError::Decode(format!("not a readable .docx: {e}")))?;
 
-        let xml = {
-            let mut part = archive
-                .by_name("word/document.xml")
-                .map_err(|_| DocumentError::Decode("the .docx has no document part".to_string()))?;
-            let mut out = String::new();
-            std::io::Read::read_to_string(&mut part, &mut out)
-                .map_err(|e| DocumentError::Decode(e.to_string()))?;
-            out
+        // Two dialects, one pipeline: WordprocessingML and OpenDocument are both
+        // zips of XML with paragraphs in them, and both reflow the same way.
+        let (xml, odf) = if archive.by_name("word/document.xml").is_ok() {
+            (read_zip_part(&mut archive, "word/document.xml")?, false)
+        } else if archive.by_name("content.xml").is_ok() {
+            (read_zip_part(&mut archive, "content.xml")?, true)
+        } else {
+            return Err(DocumentError::Decode(
+                "the document has no readable part".to_string(),
+            ));
         };
 
-        let blocks = blocks_from_docx(&xml);
+        let blocks = if odf {
+            blocks_from_odt(&xml)
+        } else {
+            blocks_from_docx(&xml)
+        };
         if blocks.is_empty() {
             return Err(DocumentError::Decode(
                 "the document has no text to show".to_string(),
@@ -939,6 +945,127 @@ impl Document for DocxDocument {
     fn text_layer(&self, page: usize) -> Option<TextLayer> {
         self.reflow.text_layer(page)
     }
+}
+
+/// One part of a zip, as text.
+fn read_zip_part(
+    archive: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
+    name: &str,
+) -> Result<String, DocumentError> {
+    let mut part = archive
+        .by_name(name)
+        .map_err(|_| DocumentError::Decode(format!("the document has no {name}")))?;
+    let mut out = String::new();
+    std::io::Read::read_to_string(&mut part, &mut out)
+        .map_err(|e| DocumentError::Decode(e.to_string()))?;
+    Ok(out)
+}
+
+/// Paragraphs from `content.xml` — the OpenDocument dialect.
+///
+/// `<text:h text:outline-level="1">` is a heading, `<text:p>` is a paragraph,
+/// and both may contain spans, links and character styles whose tags have to go
+/// while their text stays.
+fn blocks_from_odt(xml: &str) -> Vec<Block> {
+    let mut blocks: Vec<Block> = Vec::new();
+    let mut rest = xml;
+
+    loop {
+        let heading = rest.find("<text:h");
+        let paragraph = rest.find("<text:p");
+        let (start, is_heading) = match (heading, paragraph) {
+            (Some(h), Some(p)) if h < p => (h, true),
+            (Some(_), Some(p)) => (p, false),
+            (Some(h), None) => (h, true),
+            (None, Some(p)) => (p, false),
+            (None, None) => break,
+        };
+
+        let after = &rest[start..];
+        let (close, open_end) = if is_heading {
+            ("</text:h>", after.find('>'))
+        } else {
+            ("</text:p>", after.find('>'))
+        };
+        let (Some(open_end), Some(end)) = (open_end, after.find(close)) else {
+            break;
+        };
+        if end < open_end {
+            rest = &after[open_end + 1..];
+            continue;
+        }
+
+        let tag = &after[..open_end];
+        let inner = &after[open_end + 1..end];
+        rest = &after[end + close.len()..];
+
+        let text = strip_tags(inner);
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+
+        let kind = if is_heading {
+            let level = attr_of(tag, "text:outline-level")
+                .and_then(|v| v.parse::<u8>().ok())
+                .unwrap_or(1);
+            Kind::Heading(level.clamp(1, 3))
+        } else {
+            Kind::Paragraph
+        };
+        blocks.push(Block { kind, text });
+    }
+
+    blocks
+}
+
+/// Text with the markup taken out and the entities put back.
+fn strip_tags(inner: &str) -> String {
+    let mut out = String::with_capacity(inner.len());
+    let mut depth = 0usize;
+    let mut chars = inner.char_indices().peekable();
+    let bytes = inner.as_bytes();
+
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'<' {
+            // `<text:s/>` is a run of spaces; `<text:tab/>` is a tab.
+            let rest = &inner[index..];
+            if rest.starts_with("<text:s") {
+                let count = rest
+                    .find('>')
+                    .and_then(|end| attr_of(&rest[..end], "text:c"))
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(1);
+                for _ in 0..count {
+                    out.push(' ');
+                }
+            } else if rest.starts_with("<text:tab") {
+                out.push('\t');
+            } else if rest.starts_with("</") {
+                depth = depth.saturating_sub(1);
+            } else if !rest.starts_with("<!") {
+                depth += 1;
+            }
+            match rest.find('>') {
+                Some(end) => index += end + 1,
+                None => break,
+            }
+        } else {
+            out.push(bytes[index] as char);
+            index += 1;
+        }
+        let _ = &mut chars;
+    }
+
+    unescape_xml(&out)
+}
+
+fn attr_of(tag: &str, name: &str) -> Option<String> {
+    let needle = format!("{name}=\"");
+    let start = tag.find(&needle)? + needle.len();
+    let end = tag[start..].find('"')? + start;
+    Some(tag[start..end].to_string())
 }
 
 /// Paragraphs from `word/document.xml`.

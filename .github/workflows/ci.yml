@@ -115,6 +115,33 @@ jobs:
             *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
           esac
 
+          # OpenDocument: the same three pipelines, another dialect.
+          cargo run --release -p feather-cli -- info tests/fixtures/notes.odt
+          odt_text=$(cargo run --release -p feather-cli -- text tests/fixtures/notes.odt)
+          echo "--- odt text (${#odt_text} chars) ---"; echo "$odt_text"; echo "--- end ---"
+          case "$odt_text" in
+            *"Feather reads OpenDocument"*) ;;
+            *) echo "::error::the ODT lost its heading"; exit 1 ;;
+          esac
+          case "$odt_text" in
+            *"<text:span"*) echo "::error::markup leaked into the ODT text"; exit 1 ;;
+          esac
+          case "$odt_text" in
+            *"café"*) ;;
+            *) echo "::error::the ODT lost its accents"; exit 1 ;;
+          esac
+
+          cargo run --release -p feather-cli -- info tests/fixtures/ledger.ods
+          cargo run --release -p feather-cli -- render tests/fixtures/ledger.ods 1 -o "$RUNNER_TEMP/ods.png"
+          check_png "$RUNNER_TEMP/ods.png"
+          ods_text=$(cargo run --release -p feather-cli -- text tests/fixtures/ledger.ods)
+          for word in Item Cost Paper 240; do
+            case "$ods_text" in
+              *"$word"*) ;;
+              *) echo "::error::the ODS lost '$word'"; exit 1 ;;
+            esac
+          done
+
           # Presentations: slides carry their own coordinates, so this is a
           # draw-where-the-file-says job rather than a layout engine.
           cargo run --release -p feather-cli -- info tests/fixtures/deck.pptx

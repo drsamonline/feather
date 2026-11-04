@@ -47,6 +47,25 @@ impl SheetDocument {
         let mut archive = zip::ZipArchive::new(Cursor::new(data))
             .map_err(|e| DocumentError::Decode(format!("not a readable workbook: {e}")))?;
 
+        // ODS is the same idea in another dialect: one content.xml with a table
+        // per sheet instead of a workbook part and a file per worksheet.
+        if archive.by_name("content.xml").is_ok() {
+            let xml = read_part(&mut archive, "content.xml")
+                .ok_or_else(|| DocumentError::Decode("the .ods has no content".to_string()))?;
+            let sheets = parse_ods(&xml);
+            if sheets.is_empty() {
+                return Err(DocumentError::Decode(
+                    "the workbook has no cells to show".to_string(),
+                ));
+            }
+            let title = Some(sheets[0].name.clone());
+            return Ok(Self {
+                text: TextRenderer::load(),
+                title,
+                sheets,
+            });
+        }
+
         let shared = read_part(&mut archive, "xl/sharedStrings.xml")
             .map(|xml| parse_shared_strings(&xml))
             .unwrap_or_default();
@@ -242,6 +261,130 @@ impl Document for SheetDocument {
         }
         Some(TextLayer { words })
     }
+}
+
+/// Sheets from an ODS `content.xml`.
+fn parse_ods(xml: &str) -> Vec<Sheet> {
+    let mut sheets = Vec::new();
+    let mut rest = xml;
+
+    while let Some(start) = rest.find("<table:table ") {
+        let after = &rest[start..];
+        let Some(close) = after.find("</table:table>") else { break };
+        let block = &after[..close];
+        rest = &after[close + 14..];
+
+        let name = attr(block, "table:name").unwrap_or_else(|| "Sheet".to_string());
+        let mut grid: Grid = Vec::new();
+        let mut rows = block;
+
+        while let Some(row_start) = rows.find("<table:table-row") {
+            let after_row = &rows[row_start..];
+            let Some(row_end) = after_row.find("</table:table-row>") else { break };
+            let row = &after_row[..row_end];
+            rows = &after_row[row_end + 16..];
+
+            // A row may repeat, which is how a spreadsheet stores a blank run.
+            let repeat: usize = attr(row, "table:number-rows-repeated")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1)
+                .min(1000);
+
+            let mut cells: Vec<String> = Vec::new();
+            let mut rest_cells = row;
+            while let Some(cell_start) = rest_cells.find("<table:table-cell") {
+                let after_cell = &rest_cells[cell_start..];
+                let Some(gt) = after_cell.find('>') else { break };
+                let self_closing = after_cell[..gt].ends_with('/');
+                let (body, next) = if self_closing {
+                    ("", &after_cell[gt + 1..])
+                } else {
+                    match after_cell.find("</table:table-cell>") {
+                        Some(end) => (&after_cell[gt + 1..end], &after_cell[end + 18..]),
+                        None => break,
+                    }
+                };
+                let value = ods_cell_text(body);
+                let span: usize = attr(&after_cell[..gt], "table:number-columns-repeated")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1)
+                    .min(1000);
+                for _ in 0..span {
+                    cells.push(value.clone());
+                }
+                rest_cells = next;
+            }
+
+            while cells.last().map(|c| c.is_empty()).unwrap_or(false) {
+                cells.pop();
+            }
+            if cells.is_empty() {
+                continue;
+            }
+            for _ in 0..repeat {
+                grid.push(cells.clone());
+            }
+        }
+
+        while grid.last().map(|row| row.iter().all(|c| c.is_empty())).unwrap_or(false) {
+            grid.pop();
+        }
+
+        let cols = grid.iter().map(|row| row.len()).max().unwrap_or(0);
+        if cols == 0 || grid.is_empty() {
+            continue;
+        }
+        sheets.push(Sheet {
+            name,
+            rows: grid.len(),
+            cols,
+            grid,
+        });
+    }
+
+    sheets
+}
+
+/// The visible text of a cell: its paragraphs joined by a space.
+fn ods_cell_text(body: &str) -> String {
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("<text:p") {
+        let after = &rest[start..];
+        let Some(gt) = after.find('>') else { break };
+        let Some(end) = after.find("</text:p>") else { break };
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(&strip_tags(&after[gt + 1..end]));
+        rest = &after[end + 8..];
+    }
+    out.trim().to_string()
+}
+
+fn strip_tags(inner: &str) -> String {
+    let mut out = String::new();
+    let mut rest = inner;
+    while let Some(lt) = rest.find('<') {
+        out.push_str(&rest[..lt]);
+        match rest[lt..].find('>') {
+            Some(gt) => rest = &rest[lt + gt + 1..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    unescape(&out)
+}
+
+fn unescape(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 fn read_part(archive: &mut zip::ZipArchive<Cursor<Vec<u8>>>, name: &str) -> Option<String> {

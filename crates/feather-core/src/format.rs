@@ -78,7 +78,12 @@ impl Format {
             "xlsx" | "xlsm" => Format::Sheet,
             "docx" => Format::Doc,
             "pptx" => Format::Slide,
-            "odt" | "ods" | "odp" | "rtf" => Format::Office,
+            // The OpenDocument family is the same idea in another dialect, so it
+            // rides the pipelines that already exist.
+            "odt" => Format::Doc,
+            "ods" => Format::Sheet,
+            "odp" => Format::Slide,
+            "rtf" => Format::Office,
             _ => Format::Unknown,
         }
     }
@@ -166,10 +171,13 @@ mod tests {
         assert_eq!(detect(zip, Some("xlsm")), Format::Sheet);
         assert_eq!(detect(zip, Some("docx")), Format::Doc);
         assert_eq!(detect(zip, Some("pptx")), Format::Slide);
-        // The ODF family still has no pipeline, and still says so rather than
-        // being quietly routed somewhere that would fail on open.
-        assert_eq!(detect(zip, Some("odt")), Format::Office);
-        assert_eq!(detect(zip, Some("ods")), Format::Office);
+        // The OpenDocument family rides the same three pipelines.
+        assert_eq!(detect(zip, Some("odt")), Format::Doc);
+        assert_eq!(detect(zip, Some("ods")), Format::Sheet);
+        assert_eq!(detect(zip, Some("odp")), Format::Slide);
+        // RTF is still unread, and still says so rather than being routed
+        // somewhere that would fail on open.
+        assert_eq!(detect(b"{\\rtf1", Some("rtf")), Format::Office);
     }
 
     #[test]
