@@ -234,6 +234,12 @@ What is released, what is next, and what each thing is waiting on:
 | Everything else | https://drsamonline.github.io/ |
 | Email | sohilmomin2000@gmail.com |
 
+## Format engines
+
+Why Office, slides, PSD and CAD are not in the viewer yet, which of the ArtCraft
+engines would change that, and what each costs:
+[docs/format-engines.md](docs/format-engines.md).
+
 ## Decisions
 
 The choices that were not obvious, and the evidence that settled them —
