@@ -15,7 +15,31 @@ pub struct TextRenderer {
 }
 
 impl TextRenderer {
+    /// Load a face.
+    ///
+    /// `FEATHER_FONT` names a font file to use instead of whatever the system
+    /// offers. Two reasons it exists: a reader may want a different face, and a
+    /// rendering test needs one fixed face or its baseline means nothing — the
+    /// same page scored 0% against a baseline made here and 14% on a CI runner
+    /// whose fonts differed.
     pub fn load() -> Self {
+        if let Some(path) = std::env::var_os("FEATHER_FONT") {
+            let path = std::path::PathBuf::from(path);
+            match std::fs::read(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|data| {
+                    fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
+                        .map_err(|e| e.to_string())
+                }) {
+                Ok(font) => return TextRenderer { font: Some(font) },
+                Err(e) => eprintln!(
+                    "feather: FEATHER_FONT is set to {} but could not be read ({e}) — \
+                     falling back to a system face",
+                    path.display()
+                ),
+            }
+        }
+
         let font = (|| {
             let mut db = fontdb::Database::new();
             db.load_system_fonts();
