@@ -1829,7 +1829,8 @@ fn screenshot(path: &str, out: &str, page: usize) -> Result<(), String> {
     let mut layout = Layout::new();
     layout.set_viewport(app.viewport.0, app.viewport.1);
     layout.set_page_count(count, placeholder);
-    let page = page.min(count.saturating_sub(1));
+    // `--page` is one-based on the command line; the pipeline is zero-based.
+    let page = page.saturating_sub(1).min(count.saturating_sub(1));
     let zoom = layout.fit_width_zoom(page);
     layout.set_zoom(zoom);
     layout.scroll_to_page(page);
