@@ -20,6 +20,8 @@ pub enum Format {
     Text,
     /// XLSX and XLSM — a workbook, drawn as a grid rather than as pages.
     Sheet,
+    /// DOCX — read as blocks and reflowed, not laid out page-for-page.
+    Doc,
     /// DOCX, PPTX, ODT, ODS, ODP — still unimplemented, and still not claimed.
     Office,
     Unknown,
@@ -36,6 +38,7 @@ impl Format {
             Format::Image => "image",
             Format::Text => "text",
             Format::Sheet => "sheet",
+            Format::Doc => "doc",
             Format::Office => "office",
             Format::Unknown => "unknown",
         }
@@ -46,7 +49,12 @@ impl Format {
     pub fn is_zip_container(self) -> bool {
         matches!(
             self,
-            Format::Epub | Format::Comic | Format::Xps | Format::Sheet | Format::Office
+            Format::Epub
+                | Format::Comic
+                | Format::Xps
+                | Format::Sheet
+                | Format::Doc
+                | Format::Office
         )
     }
 
@@ -64,7 +72,8 @@ impl Format {
             | "yaml" | "yml" | "xml" | "html" | "htm" | "css" | "js" | "ts" | "py" | "c" | "h"
             | "cpp" | "hpp" | "java" | "sh" | "sql" => Format::Text,
             "xlsx" | "xlsm" => Format::Sheet,
-            "docx" | "pptx" | "odt" | "ods" | "odp" | "rtf" => Format::Office,
+            "docx" => Format::Doc,
+            "pptx" | "odt" | "ods" | "odp" | "rtf" => Format::Office,
             _ => Format::Unknown,
         }
     }
@@ -150,7 +159,8 @@ mod tests {
         let zip = b"PK\x03\x04rest of a workbook";
         assert_eq!(detect(zip, Some("xlsx")), Format::Sheet);
         assert_eq!(detect(zip, Some("xlsm")), Format::Sheet);
-        assert_eq!(detect(zip, Some("docx")), Format::Office);
+        assert_eq!(detect(zip, Some("docx")), Format::Doc);
+        assert_eq!(detect(zip, Some("pptx")), Format::Office);
     }
 
     #[test]

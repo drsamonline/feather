@@ -875,3 +875,151 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------- Word files
+
+/// A `.docx`, read as blocks and reflowed by the same engine as a book.
+///
+/// A Word file is a zip of XML: `word/document.xml` holds paragraphs of runs,
+/// each run carrying text and a little formatting. This reads the paragraphs,
+/// keeps the heading styles and the bold runs, and hands the blocks to `Reflow`
+/// — which is the same path an EPUB takes.
+///
+/// It is read-only by construction: nothing here can write a `.docx`, and the
+/// WordCraft engine, which could, is an editor and a git dependency we do not
+/// need for the reading half.
+pub struct DocxDocument {
+    reflow: Reflow,
+}
+
+impl DocxDocument {
+    pub fn from_bytes(data: Vec<u8>) -> Result<Self, DocumentError> {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
+            .map_err(|e| DocumentError::Decode(format!("not a readable .docx: {e}")))?;
+
+        let xml = {
+            let mut part = archive
+                .by_name("word/document.xml")
+                .map_err(|_| DocumentError::Decode("the .docx has no document part".to_string()))?;
+            let mut out = String::new();
+            std::io::Read::read_to_string(&mut part, &mut out)
+                .map_err(|e| DocumentError::Decode(e.to_string()))?;
+            out
+        };
+
+        let blocks = blocks_from_docx(&xml);
+        if blocks.is_empty() {
+            return Err(DocumentError::Decode(
+                "the document has no text to show".to_string(),
+            ));
+        }
+        Ok(DocxDocument {
+            reflow: Reflow::new(blocks, None),
+        })
+    }
+}
+
+impl Document for DocxDocument {
+    fn page_count(&self) -> usize {
+        self.reflow.page_count()
+    }
+
+    fn page_size(&self, page: usize) -> Option<PageSize> {
+        self.reflow.page_size(page)
+    }
+
+    fn render(&self, page: usize, scale: f32) -> Result<RenderedPage, DocumentError> {
+        self.reflow.render(page, scale)
+    }
+
+    fn title(&self) -> Option<String> {
+        self.reflow.title()
+    }
+
+    fn text_layer(&self, page: usize) -> Option<TextLayer> {
+        self.reflow.text_layer(page)
+    }
+}
+
+/// Paragraphs from `word/document.xml`.
+fn blocks_from_docx(xml: &str) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut rest = xml;
+
+    while let Some(start) = rest.find("<w:p") {
+        let after = &rest[start..];
+        // `<w:pPr>` is the paragraph's properties, and it comes first.
+        let Some(end) = after.find("</w:p>") else { break };
+        let paragraph = &after[..end];
+        rest = &after[end + 6..];
+
+        let level = docx_heading_level(paragraph);
+        let text = docx_paragraph_text(paragraph);
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+
+        let kind = match level {
+            Some(level) => Kind::Heading(level.min(3)),
+            None => Kind::Paragraph,
+        };
+        // Two runs of the same kind merge, so a paragraph split across runs
+        // does not become two paragraphs.
+        match blocks.last_mut() {
+            Some(last) if last.kind == kind => {
+                last.text.push(' ');
+                last.text.push_str(&text);
+            }
+            _ => blocks.push(Block { kind, text }),
+        }
+    }
+
+    blocks
+}
+
+/// `Heading1` → 1. Anything else is body text.
+fn docx_heading_level(paragraph: &str) -> Option<u8> {
+    let style_at = paragraph.find("<w:pStyle")?;
+    let tag = &paragraph[style_at..];
+    let end = tag.find("/>")?;
+    let value_at = tag.find("w:val=\"")? + 7;
+    let value_end = tag[value_at..].find('"')? + value_at;
+    let name = &tag[value_at..value_end];
+    let digits: String = name.chars().filter(|c| c.is_ascii_digit()).collect();
+    if name.to_ascii_lowercase().contains("heading") || name.to_ascii_lowercase().contains("title") {
+        Some(digits.parse().unwrap_or(1).max(1))
+    } else {
+        None
+    }
+}
+
+/// The visible text of one paragraph, runs concatenated.
+fn docx_paragraph_text(paragraph: &str) -> String {
+    let mut out = String::new();
+    let mut rest = paragraph;
+    while let Some(start) = rest.find("<w:t") {
+        let after = &rest[start..];
+        let Some(gt) = after.find('>') else { break };
+        let Some(close) = after.find("</w:t>") else { break };
+        if close > gt {
+            out.push_str(&unescape_xml(&after[gt + 1..close]));
+        }
+        rest = &after[close + 6..];
+    }
+    // A tab or a line break inside a run is whitespace, not nothing.
+    if out.is_empty() {
+        if paragraph.contains("<w:br") || paragraph.contains("<w:tab") {
+            out.push(' ');
+        }
+    }
+    out
+}
+
+fn unescape_xml(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}

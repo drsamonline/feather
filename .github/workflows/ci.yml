@@ -115,6 +115,26 @@ jobs:
             *) echo "::error::the CBR failure did not say what went wrong"; exit 1 ;;
           esac
 
+          # Word files: paragraphs and heading styles, through the same reflow
+          # engine as a book.
+          cargo run --release -p feather-cli -- info tests/fixtures/letter.docx
+          cargo run --release -p feather-cli -- render tests/fixtures/letter.docx 1 -o "$RUNNER_TEMP/docx.png"
+          check_png "$RUNNER_TEMP/docx.png"
+          docx_text=$(cargo run --release -p feather-cli -- text tests/fixtures/letter.docx)
+          case "$docx_text" in
+            *"Feather reads Word files"*) ;;
+            *) echo "::error::the Word file lost its title"; exit 1 ;;
+          esac
+          case "$docx_text" in
+            *"A heading, kept as a heading"*) ;;
+            *) echo "::error::the Word file lost its heading"; exit 1 ;;
+          esac
+          case "$docx_text" in
+            *"café"*) ;;
+            *) echo "::error::a run split across runs lost its accents"; exit 1 ;;
+          esac
+          cargo run --release -p feather-cli -- find tests/fixtures/letter.docx zephyr >/dev/null
+
           # Spreadsheets: a workbook is a zip of XML, and a sheet is drawn as one
           # large page rather than paginated.
           cargo run --release -p feather-cli -- info tests/fixtures/table.xlsx
