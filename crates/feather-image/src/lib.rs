@@ -123,6 +123,166 @@ fn read_rar_page(
     Err(DocumentError::OutOfRange { page, count })
 }
 
+/// The composite image at the end of a PSD file.
+///
+/// A layered Photoshop document ends with a flattened preview, and that preview
+/// is what a reader wants: no layer compositing, no blend modes, no smart
+/// objects — just the picture the author saw. Raw and PackBits compression only;
+/// ZIP-compressed PSDs are rare and say so rather than rendering wrong.
+fn decode_psd(data: &[u8]) -> Result<image::RgbaImage, DocumentError> {
+    if data.len() < 26 || !data.starts_with(b"8BPS") {
+        return Err(DocumentError::Decode("not a Photoshop file".to_string()));
+    }
+    let version = be16(data, 4);
+    if version != 1 {
+        return Err(DocumentError::Decode(format!(
+            "Photoshop version {version} is not supported"
+        )));
+    }
+    let channels = be16(data, 12) as usize;
+    let height = be32(data, 14) as usize;
+    let width = be32(data, 18) as usize;
+    let depth = be16(data, 22);
+    let mode = be16(data, 24);
+
+    if depth != 8 {
+        return Err(DocumentError::Decode(format!(
+            "{depth}-bit Photoshop files are not supported yet"
+        )));
+    }
+    if mode != 3 && mode != 1 {
+        return Err(DocumentError::Decode(
+            "only RGB and greyscale Photoshop files are supported".to_string(),
+        ));
+    }
+    if width == 0 || height == 0 || width > 20_000 || height > 20_000 {
+        return Err(DocumentError::Decode("the image has an impossible size".to_string()));
+    }
+
+    // Skip the colour-mode block, the image resources and the layer block: the
+    // composite is what follows them.
+    let mut at = 26;
+    for _ in 0..3 {
+        let length = be32(data, at) as usize;
+        at = at
+            .checked_add(4)
+            .and_then(|v| v.checked_add(length))
+            .ok_or_else(|| DocumentError::Decode("the file is truncated".to_string()))?;
+        if at > data.len() {
+            return Err(DocumentError::Decode("the file is truncated".to_string()));
+        }
+    }
+
+    let compression = be16(data, at);
+    at += 2;
+
+    let planes = match mode {
+        3 => 3.min(channels),
+        _ => 1,
+    };
+    let pixel_count = width * height;
+    let mut planes_data: Vec<Vec<u8>> = Vec::with_capacity(planes);
+
+    match compression {
+        0 => {
+            for _ in 0..planes {
+                let end = at + pixel_count;
+                if end > data.len() {
+                    return Err(DocumentError::Decode("the image data is truncated".to_string()));
+                }
+                planes_data.push(data[at..end].to_vec());
+                at = end;
+            }
+        }
+        1 => {
+            // PackBits: a row-length table for every plane, then the rows.
+            let row_counts = planes * height * 2;
+            if at + row_counts > data.len() {
+                return Err(DocumentError::Decode("the row table is truncated".to_string()));
+            }
+            let mut counts = Vec::with_capacity(planes * height);
+            for index in 0..(planes * height) {
+                counts.push(be16(data, at + index * 2) as usize);
+            }
+            at += row_counts;
+
+            for plane in 0..planes {
+                let mut plane_out = Vec::with_capacity(pixel_count);
+                for row in 0..height {
+                    let count = counts[plane * height + row];
+                    let end = at + count;
+                    if end > data.len() {
+                        return Err(DocumentError::Decode("the image data is truncated".to_string()));
+                    }
+                    unpack_bits(&data[at..end], &mut plane_out, width);
+                    at = end;
+                }
+                planes_data.push(plane_out);
+            }
+        }
+        other => {
+            return Err(DocumentError::Decode(format!(
+                "Photoshop compression {other} is not supported"
+            )));
+        }
+    }
+
+    let mut pixels = Vec::with_capacity(pixel_count * 4);
+    for index in 0..pixel_count {
+        let r = planes_data[0][index];
+        let g = if planes > 1 { planes_data[1][index] } else { r };
+        let b = if planes > 2 { planes_data[2][index] } else { r };
+        pixels.push(r);
+        pixels.push(g);
+        pixels.push(b);
+        pixels.push(255);
+    }
+
+    image::RgbaImage::from_raw(width as u32, height as u32, pixels)
+        .ok_or_else(|| DocumentError::Decode("the image has the wrong size".to_string()))
+}
+
+/// One PackBits row into `out`, stopping at `width` bytes.
+fn unpack_bits(input: &[u8], out: &mut Vec<u8>, width: usize) {
+    let target = out.len() + width;
+    let mut index = 0;
+    while index < input.len() && out.len() < target {
+        let header = input[index] as i8;
+        index += 1;
+        if header >= 0 {
+            let count = header as usize + 1;
+            for _ in 0..count {
+                if index >= input.len() || out.len() >= target {
+                    return;
+                }
+                out.push(input[index]);
+                index += 1;
+            }
+        } else if header != -128 {
+            let count = (1 - header as i32) as usize;
+            if index >= input.len() {
+                return;
+            }
+            let value = input[index];
+            index += 1;
+            for _ in 0..count {
+                if out.len() >= target {
+                    return;
+                }
+                out.push(value);
+            }
+        }
+    }
+}
+
+fn be16(data: &[u8], at: usize) -> u16 {
+    u16::from_be_bytes([data[at], data[at + 1]])
+}
+
+fn be32(data: &[u8], at: usize) -> u32 {
+    u32::from_be_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
+}
+
 /// Every image under a directory, recursively.
 fn collect_images(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
