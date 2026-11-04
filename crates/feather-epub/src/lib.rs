@@ -1011,10 +1011,84 @@ fn docx_paragraph_text(paragraph: &str) -> String {
     out
 }
 
+/// Entities, named and numeric. Word writes `&#233;` for é whenever a run was
+/// split mid-character, which is exactly when getting this wrong is invisible
+/// until you look at the page.
 fn unescape_xml(text: &str) -> String {
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after = &rest[amp..];
+        let Some(semi) = after.find(';').filter(|end| *end <= 10) else {
+            out.push('&');
+            rest = &after[1..];
+            continue;
+        };
+        let entity = &after[1..semi];
+        let decoded = match entity {
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "amp" => Some('&'),
+            "nbsp" => Some(' '),
+            _ => entity
+                .strip_prefix('#')
+                .and_then(|number| {
+                    if let Some(hex) = number.strip_prefix('x').or_else(|| number.strip_prefix('X')) {
+                        u32::from_str_radix(hex, 16).ok()
+                    } else {
+                        number.parse::<u32>().ok()
+                    }
+                })
+                .and_then(char::from_u32),
+        };
+        match decoded {
+            Some(ch) => out.push(ch),
+            None => out.push_str(&after[..=semi]),
+        }
+        rest = &after[semi + 1..];
+    }
+
+    out.push_str(rest);
+    out
+}
+
+#[cfg(test)]
+mod docx_tests {
+    use super::*;
+
+    #[test]
+    fn numeric_entities_become_characters() {
+        assert_eq!(unescape_xml("caf&#233;"), "café");
+        assert_eq!(unescape_xml("&#x2014;"), "—");
+        assert_eq!(unescape_xml("100% &amp; more"), "100% & more");
+        // A stray ampersand is text, not a broken entity.
+        assert_eq!(unescape_xml("a & b"), "a & b");
+    }
+
+    #[test]
+    fn a_paragraph_split_across_runs_is_one_paragraph() {
+        let xml = "<w:p><w:r><w:t>caf</w:t></w:r><w:r><w:t>&#233;</w:t></w:r></w:p>";
+        let blocks = blocks_from_docx(xml);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].text, "café");
+    }
+
+    #[test]
+    fn each_paragraph_stays_its_own_block() {
+        let xml = "<w:p><w:r><w:t>one</w:t></w:r></w:p><w:p><w:r><w:t>two</w:t></w:r></w:p>";
+        let blocks = blocks_from_docx(xml);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[1].text, "two");
+    }
+
+    #[test]
+    fn heading_styles_are_headings() {
+        let xml = "<w:p><w:pPr><w:pStyle w:val=\"Heading2\"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>";
+        let blocks = blocks_from_docx(xml);
+        assert_eq!(blocks[0].kind, Kind::Heading(2));
+    }
 }
