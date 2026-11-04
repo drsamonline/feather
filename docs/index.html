@@ -5,16 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Feather — a read-only document viewer that opens before you blink</title>
 <meta name="description" content="Small, portable, cross-platform, read-only. PDF, EPUB, comics and images in one window, summoned by a keystroke.">
+<meta name="theme-color" content="#f7f4ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1216" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* Light is the base palette; the system preference decides the first paint and
+     the toggle overrides it. Both palettes name the same variables, because the
+     support block reads --ink, --paper, --muted, --line and --accent. */
   :root{
-    --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
-    /* the support block reads these names; they are this page's own palette */
-    --paper:#0d1216; --paper-2:#141c22; --muted:#8fa3b3; --accent:#7aa2c8;
-    --muted:#8a99a4; --accent:#4fa8c7; --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
+    --bg:#f7f4ee; --surface:#fffdf8; --line:#e2d8c8; --ink:#1b1712;
+    --paper:#f7f4ee; --paper-2:#fffdf8; --muted:#6b6157; --accent:#2f6f8f;
+    --brass:#b5432c; --green:#3f7d5c; --red:#a8443a;
     --mono:"IBM Plex Mono",ui-monospace,monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
+      --paper:#0d1216; --paper-2:#141c22; --muted:#8a99a4; --accent:#4fa8c7;
+      --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
+    --paper:#0d1216; --paper-2:#141c22; --muted:#8a99a4; --accent:#4fa8c7;
+    --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
@@ -53,7 +72,10 @@
 
 <header>
   <div class="wrap">
-    <div class="eyebrow">Read-only · single binary · no runtime</div>
+    <div class="eyebrow">Read-only · single binary · no runtime
+      <button id="theme" type="button" aria-label="Switch between light and dark"
+              style="float:right;font:inherit;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:3px 9px;cursor:pointer">Theme</button>
+    </div>
     <h1>A document viewer that opens before you blink.</h1>
     <p class="lede">Small, portable, cross-platform, <strong>summoned by a keystroke</strong>. No editing, no annotation, no cloud, no plugins — one window, one document, nothing else.</p>
     <div class="links" style="margin-top:28px">
@@ -268,9 +290,30 @@ powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1</code></p
 <footer>
   <div class="wrap">
     <p>MIT · © 2026 Dr Sohil Momin · <a href="https://github.com/drsamonline/feather">github.com/drsamonline/feather</a> · <a href="plan.html">the plan</a></p>
-    <p style="color:#5f6b73;font-size:12px">This page is served from <code>docs/</code> in the repository.</p>
+    <p style="color:var(--muted);font-size:12px">This page is served from <code>docs/</code> in the repository. Build <span id="stamp">—</span>.</p>
   </div>
 </footer>
 
+<script>
+  // The page keeps its own theme key so flipping it never changes the app's.
+  (function(){
+    var KEY = "feather-page-theme", root = document.documentElement;
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (saved) root.setAttribute("data-theme", saved);
+    var button = document.getElementById("theme");
+    if (button) button.addEventListener("click", function(){
+      var dark = root.getAttribute("data-theme")
+        ? root.getAttribute("data-theme") === "dark"
+        : matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = dark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+    });
+    // A build stamp, so "am I looking at the new one?" is answerable from the page.
+    var stamp = document.getElementById("stamp");
+    if (stamp) stamp.textContent = document.lastModified.slice(0, 10);
+  })();
+</script>
 </body>
 </html>
