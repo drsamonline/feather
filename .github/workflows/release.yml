@@ -120,8 +120,16 @@ jobs:
           echo "publishing $tag"
           ls -l dist
 
+          # A tag is a promise; a manual run is a try-out. Only the second one
+          # is marked prerelease.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            flags=""
+          else
+            flags="--prerelease"
+          fi
+
           gh release view "$tag" > /dev/null 2>&1 || \
-            gh release create "$tag" --title "$tag" --generate-notes --prerelease
+            gh release create "$tag" --title "$tag" --generate-notes $flags
 
           gh release upload "$tag" dist/* --clobber
 
