@@ -221,7 +221,7 @@ impl TextRenderer {
                 match image.content {
                     SwashContent::Mask => {
                         blit_alpha(
-                            buf, dst_w, dst_h, left, top, w, h, image.data, colour, clip,
+                            buf, dst_w, dst_h, left, top, w, h, &image.data, colour, clip,
                         );
                         if let Some(offset) = smear {
                             blit_alpha(
@@ -232,20 +232,20 @@ impl TextRenderer {
                                 top,
                                 w,
                                 h,
-                                image.data,
+                                &image.data,
                                 colour,
                                 clip,
                             );
                         }
                     }
                     SwashContent::Color => {
-                        blit_rgba(buf, dst_w, dst_h, left, top, w, h, image.data, clip);
+                        blit_rgba(buf, dst_w, dst_h, left, top, w, h, &image.data, clip);
                     }
                     SwashContent::SubpixelMask => {
                         // Treated as coverage: a subpixel mask on a canvas that
                         // is not subpixel-addressed would fringe.
                         blit_alpha(
-                            buf, dst_w, dst_h, left, top, w, h, image.data, colour, clip,
+                            buf, dst_w, dst_h, left, top, w, h, &image.data, colour, clip,
                         );
                     }
                 }
