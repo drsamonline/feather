@@ -18,7 +18,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
+use cosmic_text::{
+    Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
+};
 
 /// Shape results are reused: layout asks for the width of the same words
 /// hundreds of times while wrapping a page, and shaping is not free.
@@ -29,13 +31,18 @@ pub struct TextRenderer {
     swash: RefCell<SwashCache>,
     /// (text, pixel size) → advance width.
     widths: RefCell<HashMap<(String, u32), f32>>,
+    /// The family every run asks for by name. Left to its own devices the
+    /// shaper picks whichever face the system lists first, which on a machine
+    /// with forty Noto fonts is not the face anyone wants for Latin.
+    family: String,
     available: bool,
 }
 
 impl TextRenderer {
     pub fn load() -> Self {
         let font_system = FontSystem::new();
-        let available = !font_system.db().faces().next().is_none();
+        let family = pick_family(&font_system);
+        let available = !family.is_empty();
         if !available {
             eprintln!("feather: no system font found — text will be blank");
         }
@@ -43,8 +50,15 @@ impl TextRenderer {
             font_system: RefCell::new(font_system),
             swash: RefCell::new(SwashCache::new()),
             widths: RefCell::new(HashMap::new()),
+            family,
             available,
         }
+    }
+
+    /// The attributes every run is shaped with: one named family, which the
+    /// shaper falls back *out* of per character when a glyph is missing.
+    fn attrs(&self) -> Attrs<'_> {
+        Attrs::new().family(Family::Name(&self.family))
     }
 
     pub fn is_available(&self) -> bool {
@@ -184,7 +198,7 @@ impl TextRenderer {
 
         let mut buffer = Buffer::new(&mut font_system, Metrics::new(px, px * 1.4));
         buffer.set_size(&mut font_system, None, None);
-        buffer.set_text(&mut font_system, text, Attrs::new(), Shaping::Advanced);
+        buffer.set_text(&mut font_system, text, self.attrs(), Shaping::Advanced);
         buffer.shape_until_scroll(&mut font_system, false);
 
         // Glyph positions come from the run; `line_y` is where the baseline
@@ -266,11 +280,44 @@ impl TextRenderer {
 
         let mut buffer = Buffer::new(&mut font_system, Metrics::new(px, px * 1.4));
         buffer.set_size(&mut font_system, width, None);
-        buffer.set_text(&mut font_system, text, Attrs::new(), Shaping::Advanced);
+        buffer.set_text(&mut font_system, text, self.attrs(), Shaping::Advanced);
         buffer.shape_until_scroll(&mut font_system, false);
 
         f(&buffer, &mut swash)
     }
+}
+
+/// A face worth setting a page in.
+///
+/// Preference order, not discovery order: a viewer should look the same on a
+/// machine with one font as on a machine with four hundred.
+fn pick_family(font_system: &FontSystem) -> String {
+    const PREFERRED: [&str; 8] = [
+        "DejaVu Sans",
+        "Noto Sans",
+        "Liberation Sans",
+        "Arial",
+        "Helvetica",
+        "Segoe UI",
+        "Cantarell",
+        "FreeSans",
+    ];
+
+    let faces = font_system.db().faces();
+    let mut first = String::new();
+
+    for face in faces {
+        for (family, _) in &face.families {
+            if first.is_empty() {
+                first = family.clone();
+            }
+            if PREFERRED.iter().any(|want| want.eq_ignore_ascii_case(family)) {
+                return family.clone();
+            }
+        }
+    }
+
+    first
 }
 
 #[allow(clippy::too_many_arguments)]
