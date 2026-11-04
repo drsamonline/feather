@@ -56,6 +56,16 @@ jobs:
           cargo run --release -p feather-cli -- info tests/fixtures/minimal.pdf
           out="$RUNNER_TEMP/m0.png"
           cargo run --release -p feather-cli -- render tests/fixtures/minimal.pdf 1 -s 2.0 -o "$out"
+          # Wrapping is font-dependent: the same text breaks at different words
+          # on Ubuntu, macOS and Windows, so a phrase assertion has to ignore
+          # line breaks or it fails on whichever runner picked a wider face.
+          flat() { printf '%s' "$1" | tr '\n' ' ' | tr -s ' '; }
+          has() {
+            case "$(flat "$1")" in
+              *"$2"*) ;;
+              *) echo "::error::$3"; exit 1 ;;
+            esac
+          }
           check_png() {
             magic=$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')
             echo "rendered PNG magic for $1: $magic"
@@ -125,16 +135,10 @@ jobs:
           cargo run --release -p feather-cli -- info tests/fixtures/notes.odt
           odt_text=$(cargo run --release -p feather-cli -- text tests/fixtures/notes.odt)
           echo "--- odt text (${#odt_text} chars) ---"; echo "$odt_text"; echo "--- end ---"
-          case "$odt_text" in
-            *"Feather reads OpenDocument"*) ;;
-            *) echo "::error::the ODT lost its heading"; exit 1 ;;
-          esac
+          has "$odt_text" "Feather reads OpenDocument" "the ODT lost its heading"
+          has "$odt_text" "café" "the ODT lost its accents"
           case "$odt_text" in
             *"<text:span"*) echo "::error::markup leaked into the ODT text"; exit 1 ;;
-          esac
-          case "$odt_text" in
-            *"café"*) ;;
-            *) echo "::error::the ODT lost its accents"; exit 1 ;;
           esac
 
           cargo run --release -p feather-cli -- info tests/fixtures/talk.odp
@@ -142,21 +146,16 @@ jobs:
           check_png "$RUNNER_TEMP/odp.png"
           odp_text=$(cargo run --release -p feather-cli -- text tests/fixtures/talk.odp)
           echo "--- odp text (${#odp_text} chars) ---"; echo "$odp_text"; echo "--- end ---"
-          case "$odp_text" in
-            *"Feather opens OpenDocument decks"*) ;;
-            *) echo "::error::the ODP lost its title"; exit 1 ;;
-          esac
-          case "$odp_text" in
-            *"A second ODP slide"*) ;;
-            *) echo "::error::the second ODP slide is missing"; exit 1 ;;
-          esac
+          has "$odp_text" "Feather opens OpenDocument decks" "the ODP lost its title"
+          has "$odp_text" "A second ODP slide" "the second ODP slide is missing"
 
           cargo run --release -p feather-cli -- info tests/fixtures/ledger.ods
           cargo run --release -p feather-cli -- render tests/fixtures/ledger.ods 1 -o "$RUNNER_TEMP/ods.png"
           check_png "$RUNNER_TEMP/ods.png"
           ods_text=$(cargo run --release -p feather-cli -- text tests/fixtures/ledger.ods)
+          ods_flat=$(flat "$ods_text")
           for word in Item Cost Paper 240; do
-            case "$ods_text" in
+            case "$ods_flat" in
               *"$word"*) ;;
               *) echo "::error::the ODS lost '$word'"; exit 1 ;;
             esac
@@ -168,14 +167,8 @@ jobs:
           cargo run --release -p feather-cli -- render tests/fixtures/deck.pptx 2 -o "$RUNNER_TEMP/slide.png"
           check_png "$RUNNER_TEMP/slide.png"
           slide_text=$(cargo run --release -p feather-cli -- text tests/fixtures/deck.pptx)
-          case "$slide_text" in
-            *"Feather opens decks"*) ;;
-            *) echo "::error::the deck lost its title"; exit 1 ;;
-          esac
-          case "$slide_text" in
-            *"A second slide"*) ;;
-            *) echo "::error::the second slide is missing"; exit 1 ;;
-          esac
+          has "$slide_text" "Feather opens decks" "the deck lost its title"
+          has "$slide_text" "A second slide" "the second slide is missing"
 
           # Word files: paragraphs and heading styles, through the same reflow
           # engine as a book.
@@ -188,18 +181,9 @@ jobs:
           echo "--- docx text (${#docx_text} chars) ---"
           echo "$docx_text"
           echo "--- end ---"
-          case "$docx_text" in
-            *"Feather reads Word files"*) ;;
-            *) echo "::error::the Word file lost its title"; exit 1 ;;
-          esac
-          case "$docx_text" in
-            *"A heading, kept as a heading"*) ;;
-            *) echo "::error::the Word file lost its heading"; exit 1 ;;
-          esac
-          case "$docx_text" in
-            *"café"*) ;;
-            *) echo "::error::a run split across runs lost its accents"; exit 1 ;;
-          esac
+          has "$docx_text" "Feather reads Word files" "the Word file lost its title"
+          has "$docx_text" "A heading, kept as a heading" "the Word file lost its heading"
+          has "$docx_text" "café" "a run split across runs lost its accents"
           cargo run --release -p feather-cli -- find tests/fixtures/letter.docx zephyr >/dev/null
 
           # Spreadsheets: a workbook is a zip of XML, and a sheet is drawn as one
@@ -209,7 +193,8 @@ jobs:
           check_png "$RUNNER_TEMP/sheet.png"
           sheet_text=$(cargo run --release -p feather-cli -- text tests/fixtures/table.xlsx)
           for word in Region Units Revenue North 48750.5; do
-            case "$sheet_text" in
+            sheet_flat=$(flat "$sheet_text")
+          case "$sheet_flat" in
               *"$word"*) ;;
               *) echo "::error::the sheet lost '$word'"; exit 1 ;;
             esac
@@ -220,10 +205,7 @@ jobs:
           cargo run --release -p feather-cli -- render tests/fixtures/notes.md 1 -o "$RUNNER_TEMP/notes.png"
           check_png "$RUNNER_TEMP/notes.png"
           note_text=$(cargo run --release -p feather-cli -- text tests/fixtures/notes.md)
-          case "$note_text" in
-            *"Feather notes"*) ;;
-            *) echo "::error::markdown heading did not reach the text layer"; exit 1 ;;
-          esac
+          has "$note_text" "Feather notes" "markdown heading did not reach the text layer"
           case "$note_text" in
             *"# Feather"*) echo "::error::markdown syntax leaked into the text"; exit 1 ;;
           esac
