@@ -33,8 +33,11 @@ $AppName = "Feather"
 # reputation for opening a black window.
 $Extensions = @(
     ".pdf", ".epub",
-    ".cbz",
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"
+    ".cbz", ".cbr",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".psd",
+    ".docx", ".xlsx", ".pptx",
+    ".odt", ".ods", ".odp",
+    ".md", ".txt"
 )
 
 function Set-RegistryValue {

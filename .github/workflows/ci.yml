@@ -366,9 +366,24 @@ jobs:
             grep -q "MimeType=.*$mime" "$entry" || { echo "::error::entry does not advertise $mime"; exit 1; }
           done
 
-          # A file association is a promise: we must not claim Office documents.
-          if grep -q 'docx\|xlsx\|pptx' "$entry"; then
-            echo "::error::entry claims an Office format the viewer cannot open"
+          # A file association is a promise, and it cuts both ways: the entry
+          # must claim the six Office formats we now read, and must not claim
+          # one we do not. RTF is the standing example of the latter.
+          for mime in \
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document \
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet \
+            application/vnd.openxmlformats-officedocument.presentationml.presentation \
+            application/vnd.oasis.opendocument.text \
+            application/vnd.oasis.opendocument.spreadsheet \
+            application/vnd.oasis.opendocument.presentation \
+            application/vnd.comicbook-rar \
+            image/vnd.adobe.photoshop
+          do
+            grep -q "MimeType=.*$mime" "$entry" || { echo "::error::entry does not advertise $mime"; exit 1; }
+          done
+
+          if grep -q 'application/rtf' "$entry"; then
+            echo "::error::entry claims RTF, which the viewer cannot open"
             exit 1
           fi
 
