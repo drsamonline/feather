@@ -28,7 +28,7 @@ const BODY_PX: f32 = 12.0;
 const LINE_HEIGHT: f32 = 1.45;
 const INK: u32 = 0x0022_2A30;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Kind {
     Paragraph,
     Heading(u8),
