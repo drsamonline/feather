@@ -195,6 +195,11 @@ currently needs none — for a status icon. The right Linux answer is a
 StatusNotifierItem over D-Bus (`ksni`), which is a self-contained piece of work
 rather than a dependency swap, and it is not in this milestone.
 
+## Roadmap
+
+What is released, what is next, and what each thing is waiting on:
+[ROADMAP.md](ROADMAP.md).
+
 ## Decisions
 
 The choices that were not obvious, and the evidence that settled them —
