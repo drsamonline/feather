@@ -35,6 +35,7 @@ impl Format {
             Format::Svg => "svg",
             Format::Image => "image",
             Format::Text => "text",
+            Format::Sheet => "sheet",
             Format::Office => "office",
             Format::Unknown => "unknown",
         }
