@@ -85,8 +85,8 @@ because that is how a spreadsheet stores a blank run.
 Three formats became six in one commit, and the cost was two parsers rather than
 three pipelines. That is the argument for one `Document` trait in miniature.
 
-`.odp` routes to the slide pipeline, which still expects PPTX parts; it opens
-with a clear message rather than a wrong page. A known gap, named.
+`.odp` reads `draw:frame` elements and their centimetre coordinates, so the
+slide pipeline covers both dialects too. Six Office formats, three pipelines.
 
 ## Slides
 

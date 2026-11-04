@@ -52,6 +52,7 @@ look good" but "how long does it take to open a document and draw page one".
 | DOCX documents — read as blocks, reflowed | done, approximate |
 | PPTX decks — text at the file's own coordinates | done, text only |
 | ODT / ODS / ODP — OpenDocument, same pipelines | done |
+| Six Office formats, three pipelines | docx/odt · xlsx/ods · pptx/odp |
 | CBR (RAR comics) | in-process, no helper needed — via the UnRAR decoder, see `LICENSE-UNRAR` |
 | EPUB pipeline — reflowed text, its own layout engine | done, first cut |
 | Text and Markdown — same engine, one file | done |
