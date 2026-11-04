@@ -178,7 +178,9 @@ mod tests {
     fn zip_needs_the_extension() {
         assert_eq!(detect(b"PK\x03\x04rest", Some("epub")), Format::Epub);
         assert_eq!(detect(b"PK\x03\x04rest", Some("cbz")), Format::Comic);
-        assert_eq!(detect(b"PK\x03\x04rest", Some("docx")), Format::Office);
+        assert_eq!(detect(b"PK\x03\x04rest", Some("docx")), Format::Doc);
+        // PPTX and the ODF family are still unimplemented, and still say so.
+        assert_eq!(detect(b"PK\x03\x04rest", Some("pptx")), Format::Office);
         assert_eq!(detect(b"PK\x03\x04rest", None), Format::Comic);
     }
 
