@@ -201,9 +201,10 @@ impl TextRenderer {
         buffer.set_text(&mut font_system, text, self.attrs(), Shaping::Advanced);
         buffer.shape_until_scroll(&mut font_system, false);
 
-        // Glyph positions come from the run; `line_y` is where the baseline
-        // sits inside the buffer, so subtracting it puts our baseline where the
-        // caller asked for it.
+        // A glyph's own `y` is measured from the baseline, so the caller's
+        // baseline is the origin. Subtracting the run's `line_y` here drew every
+        // line one line-height too high, and the next line then painted over the
+        // tops of its glyphs — dotless i, j like a semicolon, clipped commas.
         let runs: Vec<(f32, Vec<(i32, i32, cosmic_text::CacheKey)>)> = buffer
             .layout_runs()
             .map(|run| {
@@ -212,7 +213,7 @@ impl TextRenderer {
                     .glyphs
                     .iter()
                     .map(|glyph| {
-                        let physical = glyph.physical((x, baseline - line_y), 1.0);
+                        let physical = glyph.physical((x, baseline), 1.0);
                         (physical.x, physical.y, physical.cache_key)
                     })
                     .collect();
