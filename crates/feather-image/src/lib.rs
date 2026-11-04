@@ -196,7 +196,7 @@ impl ComicDocument {
             let pages = extract_rar(&data)?;
             if pages.is_empty() {
                 return Err(DocumentError::Decode(
-                    "the archive contains no images".to_string(),
+                    "the RAR archive contains no images".to_string(),
                 ));
             }
             return Ok(ComicDocument {
