@@ -1953,7 +1953,30 @@ fn main() {
             }
             "--new-window" => new_window = true,
             "-h" | "--help" => {
-                println!("feather-viewer [--new-window] [document]");
+                println!(
+                    "\
+feather-viewer — a read-only document viewer
+
+USAGE:
+    feather-viewer [options] [document]
+
+OPTIONS:
+    --new-window        open in a window of its own, not a tab
+    --screenshot PATH   render one page to a PNG and exit; no display needed
+    --page N            1-based page for --screenshot (default 1)
+    -V, --version       print the version
+    -h, --help          this text
+
+KEYS (in the window):
+    ↑ ↓ PgUp PgDn   scroll          + - 1   zoom in, out, fit width
+    ← → Home End    page            ] [     next, previous tab
+    o               open a file     p w     pin a tab, close a tab
+    / Enter Esc     search          c       copy the selection
+    n               new window      Ctrl Alt F  summon from anywhere
+
+ENVIRONMENT:
+    FEATHER_FONT    a font file to use instead of the system's"
+                );
                 return;
             }
             "-V" | "--version" => {

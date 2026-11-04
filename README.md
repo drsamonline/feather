@@ -274,7 +274,10 @@ regression check.
 
 ```sh
 feather-viewer --screenshot out.png document.pdf
+feather-viewer --screenshot page41.png --page 41 comic.cbr
 ```
+
+`--page` is 1-based, like every page number a person says.
 
 Builds the frame through the same function the window uses — the surface is
 taken out of the application for the duration of a frame — and writes it as a

@@ -12,19 +12,23 @@ use std::time::Instant;
 use feather_core::{detect, Document, Format};
 
 const USAGE: &str = "\
-feather — read-only document viewer (M0 spike)
+feather — read-only document viewer (the headless half)
 
 USAGE:
     feather info <file>
     feather render <file> [page] [-o out.png] [-s scale]
     feather text <file> [page]
     feather find <file> <word>
+    feather --version | --help
 
 ARGS:
     <file>      document to open
     [page]      1-based page number (default 1)
     -o          output PNG path (default: page-<n>.png)
     -s          scale in pixels per point (default 1.5)
+
+The GUI binary is feather-viewer: same pipelines, plus a window. Its --screenshot
+renders a page without a display, which is what CI uses.
 
 The render command prints timings to stderr, so `feather render x.pdf -o -`
 style piping stays clean.
