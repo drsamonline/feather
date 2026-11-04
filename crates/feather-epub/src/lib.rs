@@ -59,7 +59,7 @@ struct Layout {
 /// EPUB, plain text and Markdown differ only in how they produce blocks. The
 /// layout, the pagination, the rendering and the text layer are the same code,
 /// so they live here rather than three times over.
-pub struct Reflow {
+pub(crate) struct Reflow {
     text: TextRenderer,
     blocks: Vec<Block>,
     layout: Mutex<Option<Layout>>,

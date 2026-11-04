@@ -116,8 +116,14 @@ pub fn detect(bytes: &[u8], extension: Option<&str>) -> Format {
             if by_ext == Format::Text {
                 return Format::Text;
             }
-            // Valid UTF-8 with no other signature: treat as text.
-            if !trimmed.is_empty() {
+            // Valid UTF-8 with no other signature: treat as text — but only
+            // when the extension has not already claimed a binary container.
+            // A RAR archive whose header happens to decode as UTF-8 is not a
+            // text file, and opening it as one is how a corrupt download looks
+            // like a novel.
+            if !trimmed.is_empty()
+                && (by_ext == Format::Text || by_ext == Format::Unknown)
+            {
                 return Format::Text;
             }
         }
@@ -133,6 +139,17 @@ mod tests {
     #[test]
     fn pdf_wins_over_a_lying_extension() {
         assert_eq!(detect(b"%PDF-1.7\n", Some("jpg")), Format::Pdf);
+    }
+
+    #[test]
+    fn a_binary_extension_beats_a_text_looking_header() {
+        // "Rar!" and its version bytes are valid UTF-8, which used to make a
+        // CBR archive open as a text file.
+        let rar = b"Rar!\x1a\x07\x01\x00\x00\x00\x00\x00\x00";
+        assert_eq!(detect(rar, Some("cbr")), Format::Comic);
+        assert_eq!(detect(rar, Some("cbz")), Format::Comic);
+        // With no extension at all, text is still the reasonable guess.
+        assert_eq!(detect(rar, None), Format::Text);
     }
 
     #[test]
