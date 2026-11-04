@@ -3,162 +3,217 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Feather — a read-only document viewer that opens before you blink</title>
-<meta name="description" content="Small, portable, cross-platform, read-only. PDF, EPUB, comics and images in one window, summoned by a keystroke.">
-<meta name="theme-color" content="#f7f4ee" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0d1216" media="(prefers-color-scheme: dark)">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<title>Feather — a document viewer that opens before you blink</title>
+<meta name="description" content="A read-only document viewer for PDF, EPUB, comics and images. One 9.7 MB binary, no runtime, no service, no cloud. Windows, Linux and macOS.">
+<link rel="canonical" href="https://drsamonline.github.io/feather/">
+<meta property="og:site_name" content="Feather">
+<meta property="og:title" content="Feather — a document viewer that opens before you blink">
+<meta property="og:description" content="A read-only document viewer for PDF, EPUB, comics and images. One 9.7 MB binary, no runtime, no cloud.">
+<meta property="og:url" content="https://drsamonline.github.io/feather/">
+<meta property="og:image" content="https://drsamonline.github.io/feather/assets/app-desktop.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://drsamonline.github.io/feather/assets/app-desktop.png">
+<meta name="theme-color" content="#f7f2e9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14110e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/feather.svg" type="image/svg+xml">
+<script>
+  /* Set the theme before first paint, or the page flashes the wrong one. */
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme:feather-page');
+      var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = saved || (dark ? 'dark' : 'light');
+    } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  })();
+</script>
 <style>
-  /* Light is the base palette; the system preference decides the first paint and
-     the toggle overrides it. Both palettes name the same variables, because the
-     support block reads --ink, --paper, --muted, --line and --accent. */
+  /* The page is a printed specimen; the app is a dark instrument. Same product,
+     deliberately different objects — if the two look alike, the page is wrong. */
   :root{
-    --bg:#f7f4ee; --surface:#fffdf8; --line:#e2d8c8; --ink:#1b1712;
-    --paper:#f7f4ee; --paper-2:#fffdf8; --muted:#6b6157; --accent:#2f6f8f;
-    --brass:#b5432c; --green:#3f7d5c; --red:#a8443a;
-    --mono:"IBM Plex Mono",ui-monospace,monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
-    color-scheme:light;
+    --ink:#14110e; --paper:#f7f2e9; --paper-2:#fffdf8; --muted:#6b6157; --line:#e2d8c8;
+    --accent:#2f6f8f; --accent-2:#b5432c; --frame:#efe7d8;
+    --serif:ui-serif,Georgia,"Iowan Old Style","Times New Roman",serif;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
-      --paper:#0d1216; --paper-2:#141c22; --muted:#8a99a4; --accent:#4fa8c7;
-      --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
-      color-scheme:dark;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#0d1216; --surface:#141c22; --line:#22303a; --ink:#e6edf2;
-    --paper:#0d1216; --paper-2:#141c22; --muted:#8a99a4; --accent:#4fa8c7;
-    --brass:#d6a75a; --green:#5fbd8b; --red:#e08070;
-    color-scheme:dark;
+  [data-theme="dark"]{
+    --ink:#f2ece1; --paper:#14110e; --paper-2:#1d1915; --muted:#a79b8b; --line:#332c25;
+    --accent:#7fb3cc; --accent-2:#e0806a; --frame:#0e0c0a;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:940px;margin:0 auto;padding:0 28px}
-  header{padding:88px 0 40px;border-bottom:1px solid var(--line)}
-  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:20px}
-  h1{font-size:clamp(30px,5vw,52px);line-height:1.1;font-weight:500;letter-spacing:-.02em;margin:0 0 22px}
-  .lede{font-size:clamp(16px,2vw,19px);color:var(--muted);max-width:44ch;font-weight:300}
-  .lede strong{color:var(--ink);font-weight:500}
-  section{padding:52px 0;border-bottom:1px solid var(--line)}
-  h2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin:0 0 24px;font-weight:500}
-  p{margin:0 0 16px;max-width:68ch}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .cell{background:var(--surface);padding:20px 22px}
-  .cell .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
-  .cell .v{font-size:15px;font-weight:500}
-  .cell .v small{display:block;font-weight:400;color:var(--muted);font-size:12.5px;margin-top:4px;line-height:1.5}
-  table{width:100%;border-collapse:collapse;font-size:14.5px}
-  th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 14px 10px 0;font-weight:500}
-  td{padding:9px 14px 9px 0;border-top:1px solid var(--line);vertical-align:top}
-  td:first-child{white-space:nowrap}
-  code,kbd{font-family:var(--mono);font-size:.88em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-  .yes{color:var(--green)} .later{color:var(--muted)} .no{color:var(--red)}
-  pre{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.7}
-  pre code{background:none;border:0;padding:0}
-  .links{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
-  .btn{display:inline-block;font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;text-decoration:none;color:var(--ink);border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:11px 18px;transition:border-color .15s,color .15s}
-  .btn:hover{border-color:var(--accent);color:var(--accent)}
-  .btn.primary{border-color:var(--accent);color:var(--accent)}
-  footer{padding:44px 0 72px;color:var(--muted);font-size:13px}
+  html{color-scheme:light dark;scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.65 var(--serif)}
+  .band{height:6px;background:linear-gradient(90deg,var(--accent),var(--paper) 50%,var(--accent-2))}
+  .wrap{max-width:64rem;margin:0 auto;padding:0 1.4rem}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+          padding:1.2rem 1.4rem .4rem;max-width:64rem;margin:0 auto;font-family:var(--sans);font-size:.85rem}
+  .topbar a{color:var(--muted);text-decoration:none}
+  .topbar a:hover,.topbar a:focus-visible{color:var(--ink)}
+  .theme{font:inherit;font-family:var(--sans);background:transparent;color:var(--muted);
+         border:1px solid var(--line);border-radius:.45rem;padding:.3rem .6rem;cursor:pointer}
+  .theme:hover,.theme:focus-visible{color:var(--ink);border-color:var(--ink)}
+  header .wrap{padding:2.6rem 1.4rem 2.4rem}
+  .eyebrow{font-family:var(--sans);font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 1rem}
+  h1{font-size:clamp(2.6rem,6vw,4.4rem);line-height:1.02;letter-spacing:-.03em;margin:0 0 1rem}
+  h1 em{font-style:italic;font-weight:400;color:var(--muted)}
+  .lede{font-size:1.2rem;max-width:40rem;opacity:.9}
+  .cta{display:flex;gap:.7rem;flex-wrap:wrap;margin:1.5rem 0 1.1rem}
+  .btn{font-family:var(--sans);font-size:.95rem;text-decoration:none;padding:.75rem 1.15rem;border-radius:.6rem;
+       border:1px solid var(--line);background:var(--paper-2);color:var(--ink)}
+  .btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .btn:hover,.btn:focus-visible{border-color:var(--accent);color:var(--accent)}
+  .btn.primary:hover,.btn.primary:focus-visible{color:var(--paper);border-color:var(--accent-2)}
+  .badges img{height:20px;margin:0 .3rem .3rem 0}
+  figure.shot{margin:2rem 0 0;border:1px solid var(--line);border-radius:.9rem;overflow:hidden;background:var(--paper-2)}
+  figure.shot img{width:100%;display:block}
+  figcaption{font-family:var(--sans);font-size:.85rem;color:var(--muted);padding:.7rem 1rem;border-top:1px solid var(--line)}
+  section{padding:3rem 0;border-top:1px solid var(--line)}
+  h2{font-size:1.75rem;margin:0 0 .4rem;letter-spacing:-.015em}
+  .sub{font-family:var(--sans);font-size:.95rem;color:var(--muted);margin:0 0 1.6rem;max-width:44rem}
+  .cards{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))}
+  .card{background:var(--paper-2);border:1px solid var(--line);border-radius:.8rem;padding:1.1rem}
+  .card h3{margin:.2rem 0 .4rem;font-size:1.05rem}
+  .card p{margin:0;font-family:var(--sans);font-size:.92rem;color:var(--muted)}
+  .nums{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));margin-top:.4rem}
+  .num{border-left:2px solid var(--accent);padding-left:.9rem}
+  .num b{display:block;font-size:1.9rem;line-height:1.1;letter-spacing:-.02em}
+  .num span{font-family:var(--sans);font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:.92rem}
+  th,td{text-align:left;padding:.6rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600}
+  code{font-family:var(--mono);font-size:.88em}
+  pre{background:var(--paper-2);border:1px solid var(--line);border-radius:.7rem;padding:1rem 1.1rem;
+      overflow-x:auto;font-family:var(--mono);font-size:.85rem;line-height:1.6}
+  .keys{font-family:var(--sans);font-size:.9rem;color:var(--muted);columns:2;column-gap:2rem}
+  .keys b{color:var(--ink);font-weight:500}
+  footer{padding:0 0 4rem;color:var(--muted);font-size:.9rem;font-family:var(--sans)}
   footer a{color:var(--muted)}
-  .note{border-left:2px solid var(--brass);padding-left:16px;color:var(--muted);font-size:14.5px;max-width:64ch}
+  .stamp{font-family:var(--mono);font-size:.75rem;opacity:.7}
+  .platforms{margin:0 0 .5rem;font-size:.85rem;color:var(--muted)}
+  @media (max-width:640px){ .keys{columns:1} }
 </style>
 </head>
 <body>
+<div class="band"></div>
+
+<div class="topbar">
+  <a href="https://drsamonline.github.io/">← the estate</a>
+  <button class="theme" id="theme" type="button" aria-label="Switch between light and dark">Theme</button>
+</div>
 
 <header>
   <div class="wrap">
-    <div class="eyebrow">Read-only · single binary · no runtime
-      <button id="theme" type="button" aria-label="Switch between light and dark"
-              style="float:right;font:inherit;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:3px 9px;cursor:pointer">Theme</button>
-    </div>
-    <h1>A document viewer that opens before you blink.</h1>
-    <p class="lede">Small, portable, cross-platform, <strong>summoned by a keystroke</strong>. No editing, no annotation, no cloud, no plugins — one window, one document, nothing else.</p>
-    <div class="links" style="margin-top:28px">
-      <a class="btn primary" href="https://github.com/drsamonline/feather">Repository</a>
-      <a class="btn" href="https://github.com/drsamonline/feather/blob/main/ROADMAP.md">Roadmap</a>
+    <p class="eyebrow">Read-only · one binary · no runtime</p>
+    <h1>Feather<br><em>opens before you blink.</em></h1>
+    <p class="lede">A document viewer for PDF, EPUB, comics and images. One 9.7 MB binary, no service behind it, no cloud in front of it — a keystroke away, and gone when you close it.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/drsamonline/feather/releases">Download</a>
+      <a class="btn" href="https://github.com/drsamonline/feather">Read the source</a>
       <a class="btn" href="plan.html">The build plan</a>
-      <a class="btn" href="https://github.com/drsamonline/feather/releases">Download</a>
     </div>
+    <p class="badges">
+      <img src="assets/badge-tests.svg" alt="59 tests passing">
+      <img src="assets/badge-build.svg" alt="build green on three platforms">
+      <img src="assets/badge-licence.svg" alt="MIT licence">
+      <img src="assets/badge-deps.svg" alt="10 crates">
+      <img src="assets/badge-live.svg" alt="three platforms">
+      <img src="assets/badge-offline.svg" alt="no network">
+    </p>
+
+    <figure class="shot">
+      <img src="assets/app-desktop.png" alt="Feather showing page 41 of a French Star Wars comic, a full-page colour illustration of the speeder-bike chase, with a tab strip above it">
+      <figcaption>Page 41 of a 68-page CBR, opened in-process. The whole archive is read by the viewer itself — no helper, no extraction step.</figcaption>
+    </figure>
   </div>
 </header>
 
-<section>
+<section id="numbers">
   <div class="wrap">
     <h2>Where it stands</h2>
-    <div class="grid">
-      <div class="cell"><div class="k">Binary</div><div class="v">~9.7 MB<small>One file. No runtime, no service, no shared libraries.</small></div></div>
-      <div class="cell"><div class="k">Dependencies</div><div class="v">10 crates<small>Against a ceiling of 25 in the plan. Checked on every push, including this number.</small></div></div>
-      <div class="cell"><div class="k">Page render</div><div class="v">~9 ms<small>One A4 page at 2×, measured in CI on every commit.</small></div></div>
-      <div class="cell"><div class="k">Platforms</div><div class="v">Linux · Windows · macOS<small>Built and tested on all three. Packaged on two.</small></div></div>
+    <p class="sub">Measured in CI on every push, and the page is checked against those numbers — a stale figure fails the build.</p>
+    <div class="nums">
+      <div class="num"><b>9.7 MB</b><span>one file, no runtime</span></div>
+      <div class="num"><b>10</b><span>external crates, ceiling 25</span></div>
+      <div class="num"><b>~9 ms</b><span>an A4 page at 2×</span></div>
+      <div class="num"><b>3</b><span>platforms, one codebase</span></div>
     </div>
   </div>
 </section>
 
-<section>
+<section id="opens">
   <div class="wrap">
     <h2>What it opens</h2>
+    <p class="sub">Every format goes through one <code>Document</code> trait. The window never learns what a file extension is.</p>
     <table>
-      <thead><tr><th>Format</th><th>Engine</th><th>State</th></tr></thead>
-      <tbody>
-        <tr><td><code>pdf</code></td><td>hayro — pure Rust, Apache/MIT</td><td class="yes">Rendering, tiled, zoomable</td></tr>
-        <tr><td><code>epub</code></td><td>own reflow engine, spine-ordered</td><td class="yes">Rendering, selectable</td></tr>
-        <tr><td><code>cbz</code> <code>cbr</code></td><td>zip, and RAR through the UnRAR decoder</td><td class="yes">Rendering</td></tr>
-        <tr><td>images</td><td><code>png</code> <code>jpeg</code> <code>gif</code> <code>webp</code> <code>bmp</code> <code>tiff</code></td><td class="yes">Rendering</td></tr>
-        <tr><td><code>md</code> <code>txt</code></td><td>the same reflow engine as EPUB</td><td class="yes">Rendering, selectable, searchable</td></tr>
-        <tr><td>Office / ODF</td><td>—</td><td class="later">Not claimed, not advertised</td></tr>
-      </tbody>
+      <tr><th>Format</th><th>Engine</th><th>State</th></tr>
+      <tr><td><code>pdf</code></td><td>hayro — pure Rust, Apache/MIT</td><td>Tiled, zoomable</td></tr>
+      <tr><td><code>epub</code></td><td>own reflow engine, spine-ordered</td><td>Selectable, searchable</td></tr>
+      <tr><td><code>cbz</code> <code>cbr</code></td><td>zip, and RAR through the UnRAR decoder</td><td>Rendering</td></tr>
+      <tr><td>images</td><td><code>png</code> <code>jpeg</code> <code>gif</code> <code>webp</code> <code>bmp</code> <code>tiff</code></td><td>Rendering</td></tr>
+      <tr><td><code>md</code> <code>txt</code></td><td>the same reflow engine as EPUB</td><td>Selectable, searchable</td></tr>
+      <tr><td>Office / ODF</td><td>—</td><td>Not claimed, not advertised</td></tr>
     </table>
-    <p class="note" style="margin-top:22px">Text selection works where a pipeline can say where the words are — EPUB today. PDF hands back a page image, so it stays honestly unselectable until text extraction lands.</p>
   </div>
 </section>
 
-<section>
+<section id="refuses">
+  <div class="wrap">
+    <h2>What it refuses to do</h2>
+    <p class="sub">A viewer that grows features stops opening before you blink.</p>
+    <div class="cards">
+      <div class="card"><h3>No editing</h3><p>No annotation, no forms, no signing, no saving. Open, read, close.</p></div>
+      <div class="card"><h3>No cloud</h3><p>Nothing leaves the machine. No account, no sync, no telemetry, no update check.</p></div>
+      <div class="card"><h3>No plugins</h3><p>A format is supported when a pipeline ships with it, not when someone installs one.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="honest">
+  <div class="wrap">
+    <h2>And what it does not do yet</h2>
+    <p class="sub">The gaps are on the roadmap with their blockers, not in a footnote.</p>
+    <div class="cards">
+      <div class="card"><h3>PDF text is not selectable</h3><p>hayro renders pages but exposes no glyph-to-character mapping. EPUB, Markdown and text are selectable and searchable today.</p></div>
+      <div class="card"><h3>Latin text only</h3><p>No shaping yet, so Devanagari, Arabic and Thai come out wrong. The fix is skrifa and harfrust; the plan is written, the code is not.</p></div>
+      <div class="card"><h3>No tray icon</h3><p>It needs GTK on Linux. The right answer is a D-Bus status item, which is its own piece of work.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="run">
+  <div class="wrap">
+    <h2>How to run it</h2>
+    <p class="sub">Prebuilt archives for Linux, Windows and macOS are on the releases page, each with a SHA-256 beside it.</p>
+<pre><code># from source
+cargo run --release -p feather-app -- document.pdf
+
+# look at it without a display
+feather-viewer --screenshot out.png --page 41 comic.cbr
+
+# register with the desktop — a candidate, never the default
+packaging/linux/install.sh</code></pre>
+  </div>
+</section>
+
+<section id="keys">
   <div class="wrap">
     <h2>Keys</h2>
-    <table>
-      <tbody>
-        <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>scroll</td></tr>
-        <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>Home</kbd> <kbd>End</kbd></td><td>page</td></tr>
-        <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>1</kbd></td><td>zoom in, out, fit width</td></tr>
-        <tr><td><kbd>]</kbd> <kbd>[</kbd> · click</td><td>next / previous tab</td></tr>
-        <tr><td><kbd>p</kbd> · <kbd>w</kbd></td><td>pin a tab · close a tab</td></tr>
-        <tr><td>drag · <kbd>c</kbd></td><td>select text · copy</td></tr>
-        <tr><td><kbd>/</kbd> · <kbd>Enter</kbd> · <kbd>Esc</kbd></td><td>search the document · next hit · close</td></tr>
-        <tr><td><kbd>n</kbd></td><td>open this document in a window of its own</td></tr>
-        <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></td><td>summon the window from anywhere</td></tr>
-      </tbody>
-    </table>
+    <p class="sub">Everything is one keystroke; nothing hides in a menu.</p>
+    <p class="keys">
+      <b>↑ ↓ PgUp PgDn</b> scroll<br>
+      <b>← → Home End</b> page<br>
+      <b>+ − 1</b> zoom in, out, fit width<br>
+      <b>] [</b> next, previous tab<br>
+      <b>p · w</b> pin a tab · close a tab<br>
+      <b>drag · c</b> select text · copy<br>
+      <b>/ · Enter · Esc</b> search · next hit · close<br>
+      <b>n</b> open in a window of its own<br>
+      <b>Ctrl Alt F</b> summon from anywhere
+    </p>
   </div>
 </section>
 
-<section>
-  <div class="wrap">
-    <h2>Register with the desktop</h2>
-<pre><code># Look at it without a display
-feather-viewer --screenshot out.png document.pdf
-
-# Linux — a launcher and a MIME candidate
-packaging/linux/install.sh
-
-# Windows — HKCU only, no admin rights, no installer
-powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1</code></pre>
-    <p class="note">Both register Feather as a <em>candidate</em> for the formats it can open, and neither seizes the default. Choosing that is your job, in your own settings, where you can also undo it.</p>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h2>Not in it</h2>
-    <p>Tabs, pins and your reading position are restored between runs, and the file lives where your platform expects.</p>
-    <p>Editing, annotation, printing, cloud, plugins, telemetry, an updater, a settings window, Office documents, a tray icon (it needs GTK on Linux — the right answer is a D-Bus status item, which is its own piece of work).</p>
-  </div>
-</section>
-
+<section id="support-sec"><div class="wrap">
 <!-- support:block:start -->
 <style>
   /* Scoped to .support. Uses the host page's variables when they exist. */
@@ -287,31 +342,26 @@ powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1</code></p
   })();
 </script>
 <!-- support:block:end -->
+</div></section>
+
 <footer>
   <div class="wrap">
+    <p class="platforms">Windows · Linux · macOS — built and tested on all three, packaged on all three.</p>
     <p>MIT · © 2026 Dr Sohil Momin · <a href="https://github.com/drsamonline/feather">github.com/drsamonline/feather</a> · <a href="plan.html">the plan</a></p>
-    <p style="color:var(--muted);font-size:12px">This page is served from <code>docs/</code> in the repository. Build <span id="stamp">—</span>.</p>
+    <p class="stamp">build <span id="stamp">—</span></p>
   </div>
 </footer>
 
 <script>
-  // The page keeps its own theme key so flipping it never changes the app's.
   (function(){
-    var KEY = "feather-page-theme", root = document.documentElement;
-    var saved = null;
-    try { saved = localStorage.getItem(KEY); } catch (e) {}
-    if (saved) root.setAttribute("data-theme", saved);
-    var button = document.getElementById("theme");
-    if (button) button.addEventListener("click", function(){
-      var dark = root.getAttribute("data-theme")
-        ? root.getAttribute("data-theme") === "dark"
-        : matchMedia("(prefers-color-scheme: dark)").matches;
-      var next = dark ? "light" : "dark";
-      root.setAttribute("data-theme", next);
+    var root = document.documentElement, KEY = 'theme:feather-page';
+    var button = document.getElementById('theme');
+    if (button) button.addEventListener('click', function(){
+      var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
       try { localStorage.setItem(KEY, next); } catch (e) {}
     });
-    // A build stamp, so "am I looking at the new one?" is answerable from the page.
-    var stamp = document.getElementById("stamp");
+    var stamp = document.getElementById('stamp');
     if (stamp) stamp.textContent = document.lastModified.slice(0, 10);
   })();
 </script>
