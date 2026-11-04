@@ -50,6 +50,7 @@ look good" but "how long does it take to open a document and draw page one".
 | Comic pipeline — CBZ, natural page order | done |
 | XLSX workbooks — grid, not pages | done |
 | DOCX documents — read as blocks, reflowed | done, approximate |
+| PPTX decks — text at the file's own coordinates | done, text only |
 | CBR (RAR comics) | in-process, no helper needed — via the UnRAR decoder, see `LICENSE-UNRAR` |
 | EPUB pipeline — reflowed text, its own layout engine | done, first cut |
 | Text and Markdown — same engine, one file | done |
@@ -159,6 +160,7 @@ crates/
   feather-text/   glyph rasterisation, shared by the window and the pipelines
   feather-epub/   reflowable text: strip, wrap, paginate (EPUB, Markdown, txt, DOCX)
   feather-sheet/  workbooks: XLSX read as a grid, one sheet to a page
+  feather-slide/  decks: PPTX slides drawn at their own coordinates
   feather-cli/    the spike: info + render, with timings
   feather-app/    the window: winit + softbuffer + two font crates
 ```

@@ -22,7 +22,7 @@ a Word file from a PDF.
 | Repository | Formats | Crates that do the work | Verdict |
 |---|---|---|---|
 | **wordcraft** | `.docx` | `wordcraft-docx` (reader/writer), `wordcraft-layout`, `wordcraft-render` (vello_cpu, "pages and thumbnails") | **Not taken — we wrote the read half.** Its value is a layout engine wrapped in an editor. |
-| **deckcraft** | `.pptx` | `deckcraft-pptx` (ECMA-376 PresentationML), `deckcraft-render` (slides, masters, charts, effects) | **Slides.** Same shape, same renderer. Also carries its own h264/hevc/av1/vp9/opus codecs for embedded media. |
+| **deckcraft** | `.pptx` | `deckcraft-pptx` (ECMA-376 PresentationML), `deckcraft-render` | **Not taken — we wrote the text half.** Its renderer does charts, effects and embedded video; ours does words. |
 | **gridcraft** | `.xlsx`, `.csv` | `gridcraft-xlsx`, `gridcraft-formula`, `gridcraft-numfmt` | **Superseded: we wrote our own.** See below. |
 | **photocraft** | `.psd`, RAW, `.heif` | `photocraft-psd`, `photocraft-raw`, `photocraft-heif`, `photocraft-codecs` | **New image formats** the `image` crate will not open. Cheapest win in the suite: images already fit our pipeline exactly. |
 | **vectorcraft** | `.svg`, `.eps` | `vectorcraft-svg`, `vectorcraft-eps`, `vectorcraft-render` | **Vector art**, if SVG ever needs to be more than text. |
@@ -73,6 +73,19 @@ to take first.
    may assume an editing session exists.
 4. **Binary size.** `vello_cpu` is already linked through hayro, so the renderer
    is nearly free. The parsers are not: expect a few hundred KB each.
+
+## Slides
+
+`.pptx` is the opposite of `.docx`, and that is why it took an afternoon. Word
+hands you paragraphs and leaves the layout to you; PowerPoint hands you every
+shape with its own position and extent in EMU, because the author already placed
+it. There is no layout engine to write: read the boxes, read the text, draw it
+where the file points.
+
+What that means in practice: slides open at their true aspect ratio, titles are
+larger than body copy, and the words clip to their boxes. What it does not mean:
+images, shapes, themes, transitions, tables, speaker notes. Text only, and the
+page says so.
 
 ## Word, and why WordCraft is not in it
 
