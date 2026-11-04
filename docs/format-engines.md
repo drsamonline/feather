@@ -74,6 +74,20 @@ to take first.
 4. **Binary size.** `vello_cpu` is already linked through hayro, so the renderer
    is nearly free. The parsers are not: expect a few hundred KB each.
 
+## OpenDocument came free
+
+`.odt`, `.ods` and `.odp` are the same idea in another dialect — a zip with a
+`content.xml` — so none of them needed a pipeline. Each existing reader checks
+which part it finds and parses the dialect it gets: `<text:p>` and `<text:h>` for
+documents, `<table:table>` for sheets, with repeated rows and columns honoured
+because that is how a spreadsheet stores a blank run.
+
+Three formats became six in one commit, and the cost was two parsers rather than
+three pipelines. That is the argument for one `Document` trait in miniature.
+
+`.odp` routes to the slide pipeline, which still expects PPTX parts; it opens
+with a clear message rather than a wrong page. A known gap, named.
+
 ## Slides
 
 `.pptx` is the opposite of `.docx`, and that is why it took an afternoon. Word
