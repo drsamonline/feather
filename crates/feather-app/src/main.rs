@@ -493,6 +493,37 @@ impl App {
     }
 
     /// Open a document: load it, register it with the worker, add a tab.
+    /// Raise the system file picker and open whatever comes back.
+    ///
+    /// The dialog is modal by nature: it blocks this thread until the reader
+    /// chooses or dismisses, which is what every desktop file picker does and
+    /// what people expect when they press a key for one.
+    fn open_dialog(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Open a document")
+            .add_filter("Documents", &["pdf", "epub", "xps", "svg"])
+            .add_filter("Comics", &["cbz", "cbr"])
+            .add_filter("Office", &["docx", "xlsx", "pptx", "odt", "ods", "odp"])
+            .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "psd"])
+            .add_filter("Text", &["txt", "md", "markdown", "log", "csv", "json"])
+            .add_filter("Everything", &["*"]);
+
+        // Start where the reader last was, not in the home directory.
+        if let Some(directory) = self.last_directory() {
+            dialog = dialog.set_directory(directory);
+        }
+
+        if let Some(path) = dialog.pick_file() {
+            self.open_path(path);
+        }
+    }
+
+    /// The folder of the active document, which is where the next one probably is.
+    fn last_directory(&self) -> Option<PathBuf> {
+        let tab = self.session.active_tab()?;
+        tab.path.parent().map(|parent| parent.to_path_buf())
+    }
+
     fn open_path(&mut self, path: PathBuf) {
         let title = path
             .file_name()
@@ -1781,6 +1812,10 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                         "c" => self.copy_selection(),
                         "n" => self.new_window(),
+                        "o" => {
+                            self.open_dialog();
+                            redraw = false;
+                        }
                         "p" => {
                             self.session.toggle_pinned_active();
                             self.invalidate();
