@@ -93,6 +93,24 @@ fn starts_with(bytes: &[u8], needle: &[u8]) -> bool {
     bytes.len() >= needle.len() && &bytes[..needle.len()] == needle
 }
 
+/// Is this really a BMP?
+///
+/// `BM` is two bytes, which is far too weak to route a file on: a note that
+/// begins "BMW service history" is not a bitmap, and sending it to the image
+/// pipeline is how a text file fails to open. Corroborate the signature with
+/// the rest of the header — both reserved words zero, and a DIB header size
+/// from the set every BMP writer uses.
+fn is_bmp(bytes: &[u8]) -> bool {
+    if bytes.len() < 18 || !starts_with(bytes, b"BM") {
+        return false;
+    }
+    if bytes[6..10] != [0u8, 0, 0, 0] {
+        return false;
+    }
+    let dib = u32::from_le_bytes([bytes[14], bytes[15], bytes[16], bytes[17]]);
+    matches!(dib, 12 | 40 | 52 | 56 | 64 | 108 | 124)
+}
+
 /// Identify a file from its first bytes, falling back to its extension.
 pub fn detect(bytes: &[u8], extension: Option<&str>) -> Format {
     // Fixed-layout formats announce themselves.
@@ -109,7 +127,7 @@ pub fn detect(bytes: &[u8], extension: Option<&str>) -> Format {
         || starts_with(bytes, b"GIF89a")
         || starts_with(bytes, b"II*\x00")
         || starts_with(bytes, b"MM\x00*")
-        || starts_with(bytes, b"BM")
+        || is_bmp(bytes)
     {
         return Format::Image;
     }
@@ -132,7 +150,14 @@ pub fn detect(bytes: &[u8], extension: Option<&str>) -> Format {
     }
 
     if bytes.len() >= 5 {
+        // A 512-byte cut can land inside a multi-byte character, which would
+        // make good text look like binary. Step back to the last boundary.
         let head = &bytes[..bytes.len().min(512)];
+        let head = match std::str::from_utf8(head) {
+            Ok(_) => head,
+            Err(e) if e.valid_up_to() > 0 => &head[..e.valid_up_to()],
+            Err(_) => head,
+        };
         if let Ok(text) = std::str::from_utf8(head) {
             let trimmed = text.trim_start();
             if trimmed.starts_with("<?xml") || trimmed.starts_with("<svg") {
@@ -195,6 +220,36 @@ mod tests {
     fn png_and_webp_are_images() {
         assert_eq!(detect(b"\x89PNG\r\n\x1a\n....", None), Format::Image);
         assert_eq!(detect(b"RIFF\x00\x00\x00\x00WEBPVP8 ", None), Format::Image);
+    }
+
+    #[test]
+    fn a_text_file_beginning_with_bm_is_not_a_bitmap() {
+        // "BM" is two bytes. A note about a car is not an image.
+        assert_eq!(detect(b"BMW service history\n", Some("txt")), Format::Text);
+        assert_eq!(detect(b"BMW service history\n", None), Format::Text);
+    }
+
+    #[test]
+    fn a_real_bmp_header_is_still_an_image() {
+        let mut bmp = Vec::new();
+        bmp.extend_from_slice(b"BM");
+        bmp.extend_from_slice(&70u32.to_le_bytes()); // declared file size
+        bmp.extend_from_slice(&[0u8, 0, 0, 0]); // reserved
+        bmp.extend_from_slice(&54u32.to_le_bytes()); // pixel data offset
+        bmp.extend_from_slice(&40u32.to_le_bytes()); // BITMAPINFOHEADER
+        bmp.extend_from_slice(&[0u8; 26]);
+        assert_eq!(detect(&bmp, None), Format::Image);
+        assert_eq!(detect(&bmp, Some("bmp")), Format::Image);
+    }
+
+    #[test]
+    fn a_character_split_at_the_cut_does_not_make_text_binary() {
+        // 511 ASCII bytes, then a four-byte character straddling offset 512:
+        // the sniff used to stop mid-character and call the file binary.
+        let mut bytes = vec![b'a'; 511];
+        bytes.extend_from_slice("\u{1F600}".as_bytes());
+        bytes.extend_from_slice(b"more text\n");
+        assert_eq!(detect(&bytes, None), Format::Text);
     }
 
     #[test]
