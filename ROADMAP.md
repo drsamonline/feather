@@ -23,7 +23,9 @@ platforms.
 
 Since v0.1.0 was cut: CBR opens in-process through the UnRAR decoder, so no
 helper needs installing; the format router no longer mistakes a RAR header for
-text; and the numbers quoted on the landing page are now checked in CI.
+text, no longer sends a text file that happens to begin `BM` to the image
+pipeline, and no longer calls a file binary because byte 512 landed inside a
+character; and the numbers quoted on the landing page are now checked in CI.
 
 ## v0.2 — text that is not Latin
 
